@@ -229,6 +229,17 @@ Murf Falcon and LiveKit handle audio format internally. For advanced options, se
 
 ---
 
+## Scheme Eligibility Database (Local Dataset)
+
+Since there is no public-facing, unauthenticated official API for checking Indian government scheme eligibility, this project uses a hand-built structured local dataset: `backend/src/schemes_db.json`. 
+
+- **Data Source:** Compiled and verified from official Government of India scheme circulars (myScheme and Ministry of Finance).
+- **Temporal Alignment:** The criteria and rates (e.g., APY taxpayer exclusions, PMSBY/PMJJBY premiums, SSY interest rate of 8.2%) are updated and active as of **August 2026**.
+- **Agent Integration:** The agent uses the `check_scheme_eligibility` tool to verify age, savings bank account status, taxpaying status, and girl child eligibility details.
+- **Fail-safe Mode:** If the database file is missing or corrupted, the tool fails gracefully and reports the system error and fallback instructions verbally to the caller rather than going silent or fabricating details.
+
+---
+
 ## Project Structure
 
 ```
