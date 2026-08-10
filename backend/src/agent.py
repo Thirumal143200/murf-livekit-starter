@@ -1,3 +1,4 @@
+import os
 import logging
 
 from dotenv import load_dotenv
@@ -279,7 +280,7 @@ async def my_agent(ctx: JobContext):
         stt=deepgram.STT(model="nova-3", language="multi"),
         # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         llm=google.LLM(
-                model="gemini-3.5-flash",
+                model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
             ),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         tts=murf.TTS(
