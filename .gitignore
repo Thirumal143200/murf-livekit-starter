@@ -2,3 +2,8 @@
 .env.*
 !.env.example
 .DS_Store
+*.db
+*.db.*
+livekit-server
+livekit-server.exe
+

@@ -43,10 +43,21 @@ export async function POST(req: Request) {
         { ignoreUnknownFields: true }
       );
     }
-      
+
     // Generate participant token
+    const referer = req.headers.get('referer');
+    let userId = '';
+    if (referer) {
+      try {
+        const urlObj = new URL(referer);
+        userId = urlObj.searchParams.get('userId') || urlObj.searchParams.get('user_id') || '';
+      } catch (e) {
+        console.error('Failed to parse referer URL:', e);
+      }
+    }
+
     const participantName = 'user';
-    const participantIdentity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
+    const participantIdentity = userId || `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
     const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
 
     const participantToken = await createParticipantToken(

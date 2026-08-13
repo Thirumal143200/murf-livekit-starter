@@ -25,9 +25,18 @@ async def main():
         sys.exit(1)
         
     # Check for CLI arguments to override target SIP URI
+    # Supports --to <username> or just the username
+    sip_uri = None
     if len(sys.argv) > 1:
-        sip_uri = sys.argv[1]
-    else:
+        args = sys.argv[1:]
+        if "--to" in args:
+            to_idx = args.index("--to")
+            if to_idx + 1 < len(args):
+                sip_uri = args[to_idx + 1]
+        else:
+            sip_uri = args[0]
+
+    if not sip_uri:
         sip_uri = os.getenv("LINPHONE_SIP_URI", "sip:yourusername@sip.linphone.org")
         
     sip_host = os.getenv("SIP_OUTBOUND_HOST", "sip.linphone.org")

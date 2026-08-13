@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <rect width="100" height="100" rx="24" fill="url(#murf-bg-light)"/>
+  <rect x="22" y="38" width="8" height="24" rx="4" fill="#4F46E5"/>
+  <rect x="34" y="24" width="8" height="52" rx="4" fill="#6366F1"/>
+  <rect x="46" y="42" width="8" height="34" rx="4" fill="#4F46E5"/>
+  <rect x="58" y="24" width="8" height="52" rx="4" fill="#6366F1"/>
+  <rect x="70" y="38" width="8" height="24" rx="4" fill="#4F46E5"/>
+  <defs>
+    <linearGradient id="murf-bg-light" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EEF2FF"/>
+      <stop offset="1" stop-color="#E0E7FF"/>
+    </linearGradient>
+  </defs>
+</svg>

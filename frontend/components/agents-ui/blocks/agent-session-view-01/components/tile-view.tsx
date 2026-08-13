@@ -92,7 +92,7 @@ export function TileLayout({
   audioVisualizerGridColumnCount,
   audioVisualizerWaveLineWidth,
 }: TileLayoutProps) {
-  const { videoTrack: agentVideoTrack } = useVoiceAssistant();
+  const { videoTrack: agentVideoTrack, state: voiceState } = useVoiceAssistant();
   const [screenShareTrack] = useTracks([Track.Source.ScreenShare]);
   const cameraTrack: TrackReference | undefined = useLocalTrackRef(Track.Source.Camera);
 
@@ -157,6 +157,44 @@ export function TileLayout({
                     )}
                     style={{ color: audioVisualizerColor }}
                   />
+                  
+                  {/* Central Avatar overlay that scales with the visualizer */}
+                  <motion.div
+                    key="center-avatar"
+                    initial={{ scale: 1, opacity: 0 }}
+                    animate={{ 
+                      scale: chatOpen ? 0.25 : 1,
+                      opacity: 1 
+                    }}
+                    transition={{
+                      ...ANIMATION_TRANSITION,
+                      delay: animationDelay,
+                    }}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20 flex items-center justify-center"
+                  >
+                    <div className="relative">
+                      {/* Glow indicator based on speaker state */}
+                      <div className={cn(
+                        "absolute -inset-3 rounded-full blur-md transition-all duration-500 opacity-60 animate-pulse",
+                        voiceState === 'listening' && "bg-emerald-500 shadow-emerald-500/50 shadow-lg",
+                        voiceState === 'speaking' && "bg-amber-500 shadow-amber-500/50 shadow-lg",
+                        voiceState === 'thinking' && "bg-blue-400 shadow-blue-400/50 shadow-lg",
+                        (!voiceState || voiceState === 'idle' || voiceState === 'disconnected') && "bg-emerald-500/20"
+                      )} />
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/jan-sahay-avatar.png"
+                        alt="Jan Sahay"
+                        className={cn(
+                          "size-20 md:size-28 rounded-full border-4 shadow-xl object-cover transition-all duration-300",
+                          voiceState === 'listening' && "border-emerald-500 scale-105",
+                          voiceState === 'speaking' && "border-amber-500 scale-105",
+                          voiceState === 'thinking' && "border-blue-400 animate-pulse",
+                          (!voiceState || voiceState === 'idle' || voiceState === 'disconnected') && "border-amber-500/30"
+                        )}
+                      />
+                    </div>
+                  </motion.div>
                 </motion.div>
               )}
 
