@@ -1,3 +1,15 @@
+import sys
+import os
+
+# Force UTF-8 encoding on Windows to support unicode folder paths (e.g. Tài liệu)
+if sys.platform == "win32":
+    os.environ["PYTHONUTF8"] = "1"
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import asyncio
 import logging
 import json
@@ -950,11 +962,13 @@ async def my_agent(ctx: JobContext):
             f"If no record is found, greet them as a new user."
         )
 
-    # Set up low-latency voice AI pipeline using Murf Falcon, Gemini 2.5 Flash, Deepgram Nova-3, and preemptive generation
+    gemini_model = os.getenv("GEMINI_MODEL") or os.getenv("GOOGLE_MODEL") or "gemini-3.6-flash"
+
+    # Set up low-latency voice AI pipeline using Murf Falcon, Gemini, Deepgram Nova-3, and preemptive generation
     session = AgentSession(
         stt=deepgram.STT(model="nova-3", language="multi"),
         llm=google.LLM(
-            model="gemini-2.5-flash",
+            model=gemini_model,
             temperature=0.7,
         ),
         tts=murf.TTS(
