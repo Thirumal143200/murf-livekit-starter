@@ -640,24 +640,33 @@ export const WelcomeView = ({
                 </div>
               </div>
 
-              {/* Centered Circular Activator Dial */}
+              {/* Centered Circular Activator Dial with Jan Sahay Avatar Photo */}
               <div className="shrink-0 w-full lg:w-auto flex items-center justify-center">
                 <div
                   onClick={onStartCall}
-                  className="relative bg-slate-55 w-44 h-44 rounded-full flex flex-col items-center justify-center border border-slate-200 cursor-pointer hover:scale-[1.03] active:scale-95 transition-all shadow-[0_0_20px_rgba(46,125,50,0.15)] hover:shadow-[0_0_30px_rgba(46,125,50,0.25)] group"
+                  className="relative bg-white w-48 h-48 rounded-full flex flex-col items-center justify-center border-2 border-slate-200 cursor-pointer hover:scale-[1.03] active:scale-95 transition-all shadow-[0_0_25px_rgba(46,125,50,0.2)] hover:shadow-[0_0_35px_rgba(46,125,50,0.35)] group"
                 >
-                  <div className="absolute w-[92%] h-[92%] border border-dashed border-slate-300 rounded-full animate-spin" style={{ animationDuration: '45s' }} />
-                  <div className="absolute w-[82%] h-[82%] border border-[#2E7D32]/10 rounded-full animate-pulse" />
+                  <div className="absolute w-[94%] h-[94%] border border-dashed border-[#2E7D32]/40 rounded-full animate-spin" style={{ animationDuration: '45s' }} />
+                  <div className="absolute w-[86%] h-[86%] border border-[#2E7D32]/20 rounded-full animate-pulse" />
 
-                  <div className="w-24 h-24 bg-[#2E7D32] hover:bg-[#1B5E20] rounded-full flex items-center justify-center shadow-md group-hover:scale-105 transition-all border-2 border-white">
-                    <Mic className="w-10 h-10 text-white" />
+                  {/* Avatar Photo Container */}
+                  <div className="relative w-24 h-24 rounded-full overflow-hidden border-3 border-[#2E7D32] shadow-md group-hover:scale-105 transition-all bg-slate-100">
+                    <img
+                      src="/jan_sahay_avatar.jpg"
+                      alt="Jan Sahay Voice Assistant"
+                      className="w-full h-full object-cover object-top"
+                    />
+                    <div className="absolute bottom-0 right-0 w-7 h-7 bg-[#2E7D32] rounded-full flex items-center justify-center border-2 border-white shadow-xs">
+                      <Mic className="w-3.5 h-3.5 text-white" />
+                    </div>
                   </div>
 
-                  <span className="mt-3 text-[9px] font-extrabold text-[#2E7D32] tracking-wider uppercase animate-pulse">
+                  <span className="mt-3 text-[10px] font-extrabold text-[#2E7D32] tracking-wider uppercase animate-pulse">
                     {t.startCallLabel}
                   </span>
                 </div>
               </div>
+
             </section>
 
             {/* Quick Cards Grid - Elevate on Hover */}

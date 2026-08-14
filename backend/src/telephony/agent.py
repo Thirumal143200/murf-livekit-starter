@@ -62,31 +62,20 @@ class Assistant(Agent):
         return f"No record found for user ID: {self.user_id}"
 
     @function_tool
-    async def save_caller_facts(self, name: str, language_preference: str, facts: str = "{}") -> str:
+    async def save_caller_facts(self, name: str, language_preference: str, facts: dict) -> str:
         """Saves current caller's details and facts (e.g. checked schemes, eligibility answers) to the database.
         Always verify the caller has given verbal permission/consent before calling this.
         
         Args:
             name: The caller's name.
             language_preference: The caller's preferred language (e.g., Hindi, English, Hinglish).
-            facts: A JSON string of key-value pairs representing facts about the caller (e.g., eligibility, schemes checked). Do not store account or ID numbers.
+            facts: A dictionary of key-value pairs representing facts about the caller (e.g., eligibility, schemes checked). Do not store account or ID numbers.
         """
-        import json
         logger.info(f"Tool save_caller_facts called for user_id: {self.user_id}, name: {name}")
-        
-        facts_dict = {}
-        if isinstance(facts, str):
-            try:
-                facts_dict = json.loads(facts) if facts else {}
-            except Exception:
-                facts_dict = {}
-        elif isinstance(facts, dict):
-            facts_dict = facts
-
         # Clean facts from any ID numbers or account numbers
         cleaned_facts = {}
-        for k, v in facts_dict.items():
-            if "id" in str(k).lower() or "account" in str(k).lower() or "number" in str(k).lower():
+        for k, v in facts.items():
+            if "id" in k.lower() or "account" in k.lower() or "number" in k.lower():
                 continue
             cleaned_facts[k] = v
         
@@ -233,7 +222,10 @@ server = AgentServer()
 
 
 def prewarm(proc: JobProcess):
-    proc.userdata["vad"] = silero.VAD.load()
+    proc.userdata["vad"] = silero.VAD.load(
+        min_speech_duration=0.15,
+        min_silence_duration=0.25
+    )
 
 
 server.setup_fnc = prewarm
@@ -287,24 +279,24 @@ async def my_agent(ctx: JobContext):
     else:
         instructions = f"{SYSTEM_PROMPT}\n\nCURRENT USER CALL INFO:\n- Current Caller User ID: {user_id}\n- IMPORTANT: You MUST immediately call `lookup_caller` at the very start of the conversation. If a record is returned, welcome the user back by name and reference their previous interaction (e.g. 'नमस्ते Ramesh जी, पिछली बार हमने आपके Atal Pension Yojana के बारे में बात की थी। क्या उससे जुड़ा कोई सवाल है?'). If no record is found, greet them as a new user."
 
-    gemini_model = os.getenv("GEMINI_MODEL") or os.getenv("GOOGLE_MODEL") or "gemini-2.0-flash"
-
-    # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
+    # Set up low-latency voice AI pipeline using Murf Falcon, Gemini 2.5 Flash, Deepgram Nova-3, and preemptive generation
     session = AgentSession(
         stt=deepgram.STT(model="nova-3", language="multi"),
         llm=google.LLM(
-                model=gemini_model,
-            ),
+            model="gemini-2.5-flash",
+            temperature=0.7,
+        ),
         tts=murf.TTS(
-                voice="Anisha",
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
+            voice="Anisha",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=1),
+            text_pacing=True
+        ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        preemptive_generation=False,
+        preemptive_generation=True,
     )
+
 
     # Start the session
     await session.start(

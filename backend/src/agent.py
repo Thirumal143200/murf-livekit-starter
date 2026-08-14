@@ -1,5 +1,7 @@
+import asyncio
 import logging
-import os
+import json
+from datetime import datetime
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -29,13 +31,80 @@ except ImportError:
     from src.prompt import SYSTEM_PROMPT
 
 try:
+    from specialist_prompts import (
+        FRAUD_SPECIALIST_PROMPT,
+        GOV_SCHEMES_SPECIALIST_PROMPT,
+        LOAN_SPECIALIST_PROMPT,
+        AGRI_SPECIALIST_PROMPT,
+        SPECIALIST_PROMPTS,
+        SPECIALIST_DISPLAY_NAMES,
+        SPECIALIST_HINDI_NAMES,
+        build_specialist_prompt,
+    )
+except ImportError:
+    from src.specialist_prompts import (
+        FRAUD_SPECIALIST_PROMPT,
+        GOV_SCHEMES_SPECIALIST_PROMPT,
+        LOAN_SPECIALIST_PROMPT,
+        AGRI_SPECIALIST_PROMPT,
+        SPECIALIST_PROMPTS,
+        SPECIALIST_DISPLAY_NAMES,
+        SPECIALIST_HINDI_NAMES,
+        build_specialist_prompt,
+    )
+
+try:
     import db
 except ImportError:
     import src.db as db
 
 
-class Assistant(Agent):
-    def __init__(self, user_id: str = "default_user", call_id: str = "default_call", instructions: str = SYSTEM_PROMPT) -> None:
+# ==============================================================================
+# MURF VOICE PROFILES & DYNAMIC VOICE SWITCHING
+# ==============================================================================
+# Voice Profiles & Personas:
+# - Default (Main Intake Guide): Anisha (Conversation style)
+# - Specialists (On Transfer/Handoff):
+#     * Cyber Safety & Fraud: Samar (en-IN, Conversational style)
+#     * Government Schemes: Pooja (en-IN / hi-IN, Conversational style)
+#     * Micro-Credit & Loans: Samar (en-IN, Conversational style)
+#     * Agri & PMFBY: Palak (en-IN / hi-IN, Conversational style)
+VOICE_PROFILES = {
+    "default": {"voice": "Anisha", "style": "Conversation", "locale": None},
+    "fraud": {"voice": "Samar", "locale": "en-IN", "style": "Conversational"},
+    "government_scheme": {"voice": "Pooja", "locale": "en-IN", "style": "Conversational"},
+    "schemes": {"voice": "Pooja", "locale": "en-IN", "style": "Conversational"},
+    "pension": {"voice": "Pooja", "locale": "en-IN", "style": "Conversational"},
+    "loan": {"voice": "Samar", "locale": "en-IN", "style": "Conversational"},
+    "agri": {"voice": "Palak", "locale": "en-IN", "style": "Conversational"},
+}
+
+
+def get_voice_config_for_agent(agent_type: str = "default", language_pref: str = "English") -> dict:
+    """Returns the Murf TTS voice, locale, and style for the given agent role and language preference."""
+    profile = VOICE_PROFILES.get(agent_type.lower(), VOICE_PROFILES["default"]).copy()
+    if agent_type.lower() == "default":
+        return profile
+
+    if language_pref.lower() == "hindi":
+        # Palak and Pooja support native hi-IN (Hindi - India)
+        if profile.get("voice") in ["Palak", "Pooja"]:
+            profile["locale"] = "hi-IN"
+        else:
+            profile["locale"] = "en-IN"
+    else:
+        profile["locale"] = "en-IN"
+    return profile
+
+
+# ==============================================================================
+# BASE AGENT WITH SHARED CAPABILITIES
+# ==============================================================================
+
+class BaseJanSahayAgent(Agent):
+    """Base class for Jan Sahay AI Agents with shared memory and safety tools."""
+
+    def __init__(self, user_id: str, call_id: str, instructions: str = SYSTEM_PROMPT) -> None:
         super().__init__(instructions=instructions)
         self.user_id = user_id
         self.call_id = call_id
@@ -48,9 +117,46 @@ class Assistant(Agent):
         logger.info(f"Tool lookup_caller called for current user: {self.user_id}")
         user_info = db.get_user(self.user_id)
         if user_info:
-            import json
             return json.dumps(user_info)
         return f"No record found for user ID: {self.user_id}"
+
+    @function_tool
+    async def record_caller_query(self, caller_query: str, domain: str = "general") -> str:
+        """Records the caller's initial inquiry topic in the database during the welcoming turn.
+        
+        Args:
+            caller_query: Summary of what the caller asked about.
+            domain: The domain topic ('government_scheme', 'fraud', 'loan', 'agri', 'general').
+        """
+        logger.info(f"Recording caller initial query for user {self.user_id}: {caller_query} (domain: {domain})")
+        user_info = db.get_user(self.user_id) or {}
+        facts = user_info.get("facts", {})
+        facts["last_query"] = caller_query
+        facts["inquiry_domain"] = domain
+        caller_name = user_info.get("name", "Citizen")
+        lang_pref = user_info.get("language_preference", "English")
+        db.save_user(self.user_id, caller_name, lang_pref, facts)
+        return f"Successfully logged caller inquiry topic: '{caller_query}' in database."
+
+    @function_tool
+    async def save_caller_facts(self, name: str, language_preference: str, facts: dict) -> str:
+        """Saves current caller's details and facts (e.g. checked schemes, eligibility answers) to the database.
+        Always verify the caller has given verbal permission/consent before calling this.
+        
+        Args:
+            name: The caller's name.
+            language_preference: The caller's preferred language (e.g., Hindi, English, Hinglish).
+            facts: A dictionary of key-value pairs representing facts about the caller. Do not store account or ID numbers.
+        """
+        logger.info(f"Tool save_caller_facts called for user_id: {self.user_id}, name: {name}")
+        cleaned_facts = {}
+        for k, v in facts.items():
+            if "id" in k.lower() or "account" in k.lower() or "number" in k.lower() or "pin" in k.lower() or "otp" in k.lower():
+                continue
+            cleaned_facts[k] = v
+        
+        db.save_user(self.user_id, name, language_preference, cleaned_facts)
+        return f"Successfully saved details for user {name} (ID: {self.user_id})."
 
     @function_tool
     async def create_escalation(
@@ -62,7 +168,7 @@ class Assistant(Agent):
         language: str,
         follow_up_method: str,
         contact_details: str,
-        checked_facts: str = "{}"
+        checked_facts: dict = {}
     ) -> str:
         """Creates a human support request/escalation in the database when the caller reports fraud or requests a manual decision.
         Always verify the caller has given verbal permission/consent before calling this.
@@ -76,26 +182,15 @@ class Assistant(Agent):
             language: The caller's preferred language.
             follow_up_method: The caller's preferred contact method (e.g., Phone Call, SMS, Email).
             contact_details: Phone number or email to reach them.
-            checked_facts: Key-value facts/context in JSON format that the agent checked.
+            checked_facts: Key-value facts/context the agent already checked.
         """
-        import json
         logger.info(f"Tool create_escalation called for user_id: {self.user_id}, name: {caller_name}")
-        
-        facts_dict = {}
-        if isinstance(checked_facts, str):
-            try:
-                facts_dict = json.loads(checked_facts) if checked_facts else {}
-            except Exception:
-                facts_dict = {}
-        elif isinstance(checked_facts, dict):
-            facts_dict = checked_facts
-
         ref_id = db.create_escalation(
             caller_id=self.user_id,
             caller_name=caller_name,
             situation=situation,
             what_happened=what_happened,
-            checked_facts=facts_dict,
+            checked_facts=checked_facts,
             urgency=urgency,
             language=language,
             follow_up_method=follow_up_method,
@@ -116,38 +211,434 @@ class Assistant(Agent):
         return "Refusal recorded successfully."
 
 
+# ==============================================================================
+# SPECIALIST AGENT CLASSES (STEP 2: FOCUSED ROLES, INSTRUCTIONS, AND LIMITS)
+# ==============================================================================
+
+class FraudSpecialist(BaseJanSahayAgent):
+    """Dedicated Cyber Fraud & Emergency Account Containment Specialist."""
+
+    def __init__(self, user_id: str, call_id: str, instructions: str = FRAUD_SPECIALIST_PROMPT) -> None:
+        super().__init__(user_id=user_id, call_id=call_id, instructions=instructions)
+
     @function_tool
-    async def save_caller_facts(self, name: str, language_preference: str, facts: str = "{}") -> str:
-        """Saves current caller's details and facts (e.g. checked schemes, eligibility answers) to the database.
-        Always verify the caller has given verbal permission/consent before calling this.
+    async def get_bank_fraud_hotlines(self, bank_name: str = "All") -> str:
+        """Returns verified emergency helpline numbers for Indian banks to freeze compromised accounts/cards.
         
         Args:
-            name: The caller's name.
-            language_preference: The caller's preferred language (e.g., Hindi, English, Hinglish).
-            facts: A JSON string of key-value pairs representing facts about the caller (e.g., eligibility, schemes checked). Do not store account or ID numbers.
+            bank_name: Name of the bank (e.g., 'SBI', 'HDFC', 'ICICI', 'PNB', 'Axis', 'Bank of Baroda', or 'All').
         """
-        import json
-        logger.info(f"Tool save_caller_facts called for user_id: {self.user_id}, name: {name}")
+        hotlines = {
+            "National Cyber Crime Helpline": "1930 (Immediate 24x7 Golden Hour Reporting)",
+            "State Bank of India (SBI)": "1800 1234 / 1800 2100 / SMS 'BLOCK' to 567676",
+            "HDFC Bank": "1800 1600 / 1800 2600",
+            "ICICI Bank": "1800 1080",
+            "Punjab National Bank (PNB)": "1800 1800 / 1800 2021",
+            "Axis Bank": "1860 419 5555 / 1860 500 5555",
+            "Bank of Baroda": "1800 5700",
+            "Official Cyber Crime Reporting Portal": "https://cybercrime.gov.in"
+        }
+        name_upper = bank_name.upper().strip()
+        matched = {k: v for k, v in hotlines.items() if name_upper in k.upper()}
+        result = matched if matched else hotlines
+        return json.dumps(result)
+
+    @function_tool
+    async def file_cyber_complaint_guide(self) -> str:
+        """Provides official step-by-step instructions for reporting financial cyber fraud to the government."""
+        return json.dumps({
+            "immediate_steps": [
+                "1. Dial 1930 immediately (National Cyber Crime Helpline) to request transaction freeze in the recipient account.",
+                "2. Visit https://cybercrime.gov.in and file a complaint under 'Financial Fraud'.",
+                "3. Keep transaction IDs, bank statements, SMS alerts, and suspect phone numbers ready.",
+                "4. Visit your nearest Police Station / Cyber Cell if amount exceeds Rs 50,000 or upon request from 1930."
+            ],
+            "safety_warning": "Never share OTP, ATM PIN, UPI PIN, or internet banking passwords with anyone, including bank representatives."
+        })
+
+
+class GovernmentSchemeSpecialist(BaseJanSahayAgent):
+    """Dedicated Government Schemes & Welfare Programs Specialist (Pooja)."""
+
+    def __init__(self, user_id: str, call_id: str, instructions: str = GOV_SCHEMES_SPECIALIST_PROMPT) -> None:
+        super().__init__(user_id=user_id, call_id=call_id, instructions=instructions)
+
+    @function_tool
+    async def calculate_apy_contribution(self, current_age: int, desired_monthly_pension: int = 5000) -> str:
+        """Calculates exact monthly, quarterly, and half-yearly contributions for Atal Pension Yojana (APY).
         
-        facts_dict = {}
-        if isinstance(facts, str):
+        Args:
+            current_age: The citizen's age in years (must be between 18 and 40).
+            desired_monthly_pension: Desired monthly pension after age 60. Must be 1000, 2000, 3000, 4000, or 5000.
+        """
+        if current_age < 18 or current_age > 40:
+            return json.dumps({
+                "eligible": False,
+                "error": f"Age {current_age} is outside APY entry age limits (18 to 40 years). Individuals above 40 can explore NPS Tier 1 or Senior Citizen Savings Scheme."
+            })
+        
+        if desired_monthly_pension not in [1000, 2000, 3000, 4000, 5000]:
+            return json.dumps({
+                "eligible": False,
+                "error": "Desired pension slab must be exactly 1000, 2000, 3000, 4000, or 5000 Rupees per month."
+            })
+
+        multiplier = desired_monthly_pension // 1000
+        
+        base_monthly = {
+            18: 42, 19: 46, 20: 50, 21: 54, 22: 59, 23: 64, 24: 70, 25: 76,
+            26: 82, 27: 90, 28: 97, 29: 106, 30: 116, 31: 126, 32: 138, 33: 151,
+            34: 165, 35: 181, 36: 198, 37: 218, 38: 240, 39: 264, 40: 291
+        }
+        
+        monthly = base_monthly.get(current_age, 116) * multiplier
+        quarterly = monthly * 3
+        half_yearly = monthly * 6
+        years_of_contribution = 60 - current_age
+        
+        return json.dumps({
+            "eligible": True,
+            "entry_age": current_age,
+            "years_to_contribute": years_of_contribution,
+            "guaranteed_monthly_pension_at_60": f"Rs {desired_monthly_pension:,}",
+            "monthly_contribution": f"Rs {monthly:,}",
+            "quarterly_contribution": f"Rs {quarterly:,}",
+            "half_yearly_contribution": f"Rs {half_yearly:,}",
+            "tax_payer_exclusion": "Note: Income tax payers are ineligible to join APY (effective Oct 1, 2022).",
+            "nominee_benefit": "Full accumulated corpus is returned to nominee/spouse upon subscriber's demise."
+        })
+
+    @function_tool
+    async def get_nps_guidelines(self, current_age: int = 30) -> str:
+        """Returns National Pension System (NPS) Tier-1 guidelines, equity/debt allocation, and tax benefits under Sec 80CCD(1B)."""
+        return json.dumps({
+            "scheme": "National Pension System (NPS)",
+            "eligibility": "Any Indian citizen aged 18 to 70 years.",
+            "tax_benefits": "Deduction up to Rs 1.5 Lakh under 80C, plus EXCLUSIVE additional deduction of Rs 50,000 under Section 80CCD(1B).",
+            "withdrawal_at_60": "60% corpus is tax-free lump-sum withdrawal, 40% mandatory annuity for lifetime regular pension."
+        })
+
+
+# Alias for backwards compatibility
+PensionSpecialist = GovernmentSchemeSpecialist
+
+
+class LoanSpecialist(BaseJanSahayAgent):
+    """Dedicated Small Business & Micro-Credit Specialist (Mudra, SVANidhi, Stand-Up India)."""
+
+    def __init__(self, user_id: str, call_id: str, instructions: str = LOAN_SPECIALIST_PROMPT) -> None:
+        super().__init__(user_id=user_id, call_id=call_id, instructions=instructions)
+
+    @function_tool
+    async def check_mudra_eligibility(self, loan_amount: int, business_type: str, is_new_business: bool = False) -> str:
+        """Evaluates Mudra loan category (Shishu, Kishore, Tarun, Tarun Plus), document checklist, and collateral-free rules.
+        
+        Args:
+            loan_amount: Loan amount requested in INR. Up to Rs 20,000,000 (20 Lakhs).
+            business_type: Type of non-farm micro/small enterprise (e.g. retail, manufacturing, repair, food).
+            is_new_business: True if starting fresh, False if expanding an existing enterprise.
+        """
+        if loan_amount <= 50000:
+            category = "Shishu (शिशु)"
+            max_limit = "Rs 50,000"
+            processing_fee = "NIL"
+            doc_requirements = ["Aadhaar Card / Voter ID", "Proof of business address", "Quotation of machinery/items to purchase"]
+        elif loan_amount <= 500000:
+            category = "Kishore (किशोर)"
+            max_limit = "Rs 50,001 to Rs 5 Lakhs"
+            processing_fee = "0.50% (often waived by PSBs)"
+            doc_requirements = ["Aadhaar & PAN", "Udyam Registration", "Last 6 months bank statement", "Business proof & projected balance sheet"]
+        elif loan_amount <= 1000000:
+            category = "Tarun (तरुण)"
+            max_limit = "Rs 5 Lakhs to Rs 10 Lakhs"
+            processing_fee = "0.50%"
+            doc_requirements = ["Aadhaar & PAN", "Udyam Registration", "Last 12 months bank statement", "2 years ITR / sales tax records", "Project report"]
+        elif loan_amount <= 2000000:
+            category = "Tarun Plus (तरुण प्लस - Expanded 2024-2026 Limit)"
+            max_limit = "Rs 10 Lakhs to Rs 20 Lakhs (for repeat entrepreneurs with good repayment record)"
+            processing_fee = "Standard bank charges"
+            doc_requirements = ["Prior Mudra repayment clearance certificate", "Audited financial statements", "Udyam Certificate", "ITR records"]
+        else:
+            return json.dumps({
+                "eligible": False,
+                "reason": "Mudra loans are capped at Rs 20 Lakhs. For higher loans, explore CGTMSE or MSME loan schemes."
+            })
+
+        return json.dumps({
+            "category": category,
+            "loan_amount_requested": f"Rs {loan_amount:,}",
+            "limit_bracket": max_limit,
+            "collateral_required": "NO collateral security required (backed by Credit Guarantee Fund for Micro Units - CGFMU).",
+            "processing_fee": processing_fee,
+            "document_checklist": doc_requirements,
+            "how_to_apply": "Apply online via www.udyamimitra.in or visit any commercial bank, Regional Rural Bank (RRB), or NBFC."
+        })
+
+    @function_tool
+    async def get_pm_svanidhi_details(self, vendor_type: str = "street_vendor") -> str:
+        """Returns PM SVANidhi micro-credit details for street vendors (10k, 20k, 50k tranches with 7% interest subsidy)."""
+        return json.dumps({
+            "scheme": "PM Street Vendor's AtmaNirbhar Nidhi (PM SVANidhi)",
+            "tranches": [
+                "1st Tranche: Rs 10,000 (1 year tenure)",
+                "2nd Tranche: Rs 20,000 (upon timely repayment of 1st)",
+                "3rd Tranche: Rs 50,000 (upon timely repayment of 2nd)"
+            ],
+            "interest_subsidy": "7% annual interest subsidy credited directly to bank account.",
+            "digital_incentive": "Cashback up to Rs 1,200 per year for conducting digital UPI transactions.",
+            "documents": "Vending Certificate / Urban Local Body (ULB) Identity Card, Aadhaar Card, Bank Passbook."
+        })
+
+
+class AgriSpecialist(BaseJanSahayAgent):
+    """Dedicated Agri-Financial, Crop Insurance (PMFBY), and Farmer Welfare Specialist."""
+
+    def __init__(self, user_id: str, call_id: str, instructions: str = AGRI_SPECIALIST_PROMPT) -> None:
+        super().__init__(user_id=user_id, call_id=call_id, instructions=instructions)
+
+    @function_tool
+    async def check_crop_insurance_details(self, crop_name: str, season: str, state: str = "All India") -> str:
+        """Returns PMFBY premium rates, localized damage claims rules, and 72-hour intimation requirements.
+        
+        Args:
+            crop_name: Name of the crop (e.g. Paddy, Wheat, Cotton, Soybean, Mustard, Sugarcane, Onion).
+            season: Season: 'Kharif', 'Rabi', or 'Commercial/Horticultural'.
+            state: State name.
+        """
+        season_lower = season.lower()
+        if "kharif" in season_lower:
+            premium_rate = "2.0% of Sum Insured (Farmer's share; balance paid 50:50 by Central & State Govts)"
+        elif "rabi" in season_lower:
+            premium_rate = "1.5% of Sum Insured"
+        else:
+            premium_rate = "5.0% of Sum Insured (Commercial / Horticultural crops)"
+
+        return json.dumps({
+            "scheme": "Pradhan Mantri Fasal Bima Yojana (PMFBY)",
+            "crop": crop_name,
+            "season": season,
+            "premium_payable_by_farmer": premium_rate,
+            "CRITICAL_72_HOUR_CLAIM_RULE": "In case of localized disaster (hailstorm, unseasonal rain, inundation, landslide), farmer MUST intimate crop loss within 72 hours via Crop Insurance App, helpline 14447, or local agriculture officer.",
+            "required_documents": ["Land Record (Khasra/Khatauni/7/12/RoR)", "Sowing Certificate / Patwari report", "Aadhaar Card", "Bank Passbook linked with DBT"],
+            "helpline": "14447 (National Toll-Free Crop Insurance Helpline)"
+        })
+
+    @function_tool
+    async def get_pm_kisan_details(self) -> str:
+        """Returns PM-KISAN guidelines, Rs 6,000 benefit, eKYC status instructions, and land seeding rules."""
+        return json.dumps({
+            "scheme": "PM-KISAN (Pradhan Mantri Kisan Samman Nidhi)",
+            "annual_financial_benefit": "Rs 6,000 per year transferred in 3 equal installments of Rs 2,000 directly to bank account.",
+            "mandatory_criteria": [
+                "1. Aadhaar-based eKYC completed on pmkisan.gov.in or CSC center.",
+                "2. Land details seeded and verified in State land records.",
+                "3. Bank account linked with Aadhaar and active DBT enabled."
+            ],
+            "helpline": "155261 / 011-24300606"
+        })
+
+    @function_tool
+    async def get_kisan_credit_card_details(self, land_size_acres: float = 0) -> str:
+        """Returns Kisan Credit Card (KCC) limit guidelines, 4% interest rate, and application checklist."""
+        return json.dumps({
+            "scheme": "Kisan Credit Card (KCC)",
+            "effective_interest_rate": "4% per annum (7% basic rate minus 3% prompt repayment incentive).",
+            "collateral_free_limit": "Up to Rs 1.60 Lakhs (and up to Rs 3 Lakhs with tie-up arrangements).",
+            "revolving_credit": "Valid for 5 years with annual review and flexible drawdowns for seed/fertilizer/pesticide purchases."
+        })
+
+
+# ==============================================================================
+# MAIN ASSISTANT AGENT (STEPS 3, 4, 5: HANDOFF TOOL, CONTEXT PASSING & ANNOUNCEMENT)
+# ==============================================================================
+
+class Assistant(BaseJanSahayAgent):
+    """Main Jan Sahay Assistant handling general intake, welfare schemes, and handoffs to specialists."""
+
+    def __init__(
+        self,
+        user_id: str,
+        call_id: str,
+        instructions: str = SYSTEM_PROMPT,
+        session: AgentSession | None = None
+    ) -> None:
+        super().__init__(user_id=user_id, call_id=call_id, instructions=instructions)
+        self.active_specialist = None
+        self._voice_session = session
+
+    # Step 3: Add handoff tool to main agent
+    @function_tool
+    async def handoff_to_specialist(
+        self,
+        specialist_type: str,
+        user_inquiry_summary: str,
+        caller_crop_or_scheme: str = ""
+    ) -> str:
+        """Transfers the caller and conversation to a dedicated financial specialist guide.
+        
+        CRITICAL RULE: Call this tool ONLY after the caller's second question or when deep domain calculations/checklists are needed.
+        
+        Choose the appropriate specialist_type:
+        - 'government_scheme' (or 'schemes', 'pension'): For all Central/State Government Schemes, APY, SSY, PMJDY, PMSBY, PMJJBY, NPS. (Voice: Pooja)
+        - 'fraud': For urgent UPI scams, unauthorized debits, compromised OTP/passwords, fake loan apps, or account freezing. (Voice: Samar)
+        - 'loan': For Pradhan Mantri Mudra Yojana (Shishu/Kishore/Tarun), small business loans, or PM SVANidhi. (Voice: Samar)
+        - 'agri': For PM Fasal Bima Yojana (PMFBY), crop damage intimation (72h rule), PM-KISAN, or Kisan Credit Card (KCC). (Voice: Palak)
+        
+        Args:
+            specialist_type: The domain specialist to hand off to. Must be one of: 'government_scheme', 'fraud', 'loan', 'agri', 'schemes', 'pension'.
+            user_inquiry_summary: A concise summary of the caller's specific problem or request so the specialist can immediately continue.
+            caller_crop_or_scheme: Optional name of the crop, scheme, or bank mentioned by the user.
+        """
+        spec_key = specialist_type.lower().strip()
+        if spec_key in ["pension", "schemes", "scheme", "gov_scheme", "government_schemes"]:
+            spec_key = "government_scheme"
+            
+        if spec_key not in ["fraud", "government_scheme", "loan", "agri"]:
+            spec_key = "government_scheme"  # Default fallback
+            
+        spec_name_en = SPECIALIST_DISPLAY_NAMES.get(spec_key, "Specialist")
+        spec_name_hi = SPECIALIST_HINDI_NAMES.get(spec_key, "विशेषज्ञ")
+        
+        logger.info(f"Handoff initiated for user {self.user_id} to specialist '{spec_key}'. Summary: {user_inquiry_summary}")
+        
+        # Track transition state in DB: Connecting to specialist
+        db.update_call_progress(self.call_id, outcome_type=f"Connecting to {spec_name_en}...")
+        self.active_specialist = spec_key
+        
+        # Step 4: Pass the conversation context & user facts to the specialist
+        user_info = db.get_user(self.user_id) or {}
+        caller_name = user_info.get("name", "")
+        language_pref = user_info.get("language_preference", "English")
+        facts = user_info.get("facts", {})
+        if caller_crop_or_scheme:
+            facts["focused_topic"] = caller_crop_or_scheme
+            
+        new_instructions = build_specialist_prompt(
+            specialist_type=spec_key,
+            user_inquiry_summary=user_inquiry_summary,
+            caller_name=caller_name,
+            language_pref=language_pref,
+            facts=facts
+        )
+        
+        # Dynamically update the active agent's instructions with specialist prompt & preserved memory
+        await self.update_instructions(new_instructions)
+
+        # Step 5: Speak the connection message in the FIRST/MAIN agent's voice (Anisha)
+        if language_pref.lower() == "hindi":
+            connecting_line = f"मैं आपको हमारे {spec_name_hi} से कनेक्ट कर रही हूँ। कृपया एक पल रुकिए।"
+            specialist_intro = f"नमस्ते! मैं आपकी {spec_name_hi} हूँ।"
+            lang_rule = "STRICT LANGUAGE RULE: Respond ONLY in 100% Hindi (Devanagari script). Do NOT speak English."
+        else:
+            connecting_line = f"I will connect you to our {spec_name_en}. Please hold on a moment."
+            specialist_intro = f"Hello! I am your {spec_name_en}."
+            lang_rule = "STRICT LANGUAGE RULE: Respond ONLY in 100% English. Do NOT speak Hindi."
+
+        active_session = getattr(self, "_voice_session", None) or (getattr(self, "_activity", None).session if hasattr(self, "_activity") and self._activity else None)
+        if active_session:
             try:
-                facts_dict = json.loads(facts) if facts else {}
-            except Exception:
-                facts_dict = {}
-        elif isinstance(facts, dict):
-            facts_dict = facts
+                logger.info(f"Main agent (Anisha) speaking transition announcement: '{connecting_line}'")
+                await active_session.say(connecting_line, allow_interruptions=False)
+            except Exception as e:
+                logger.warning(f"Could not speak handoff announcement: {e}")
 
-        # Clean facts from any ID numbers or account numbers
-        cleaned_facts = {}
-        for k, v in facts_dict.items():
-            if "id" in str(k).lower() or "account" in str(k).lower() or "number" in str(k).lower():
-                continue
-            cleaned_facts[k] = v
+        # Transition directly to specialist voice with minimal delay
+        logger.info(f"[TRANSITION IN PROGRESS] Connecting to {spec_name_en}... Switching voice immediately.")
+        await asyncio.sleep(0.2)
+
+        # Step 7: Dynamically switch Murf TTS voice to specialist voice (Samar/Pooja/Palak)
+        voice_cfg = get_voice_config_for_agent(spec_key, language_pref)
+        if active_session and hasattr(active_session, "tts") and active_session.tts:
+            try:
+                logger.info(
+                    f"[VOICE SWITCH] Switching TTS voice to {voice_cfg['voice']} (locale={voice_cfg['locale']}, "
+                    f"style={voice_cfg['style']}) for {spec_name_en}"
+                )
+                active_session.tts.update_options(
+                    voice=voice_cfg["voice"],
+                    locale=voice_cfg["locale"],
+                    style=voice_cfg["style"]
+                )
+            except Exception as e:
+                logger.warning(f"Could not dynamically update TTS voice options: {e}")
+
+        # Update DB outcome to fully connected
+        db.update_call_progress(self.call_id, status="success", outcome_type=f"Connected: {spec_name_en}")
+        logger.info(f"[CONNECTED] Specialist {spec_name_en} is now active with voice {voice_cfg['voice']}")
+
+        return (
+            f"[HANDOFF TO {spec_name_en.upper()} SUCCESSFUL - VOICE HAS SWITCHED TO {voice_cfg['voice'].upper()}]\n"
+            f"{lang_rule}\n"
+            f"IMPORTANT: The main agent (Anisha) has ALREADY spoken '{connecting_line}'. Do NOT repeat 'I will connect you...'.\n"
+            f"1. Specialist Introduction: Start your reply directly with '{specialist_intro}'\n"
+            f"2. Direct Answer: Immediately address '{user_inquiry_summary}' with clear guidance in that same single language."
+        )
+
+    @function_tool
+    async def handoff_to_main_guide(self, user_inquiry_summary: str = "") -> str:
+        """Transfers the caller back to the main Jan Sahay Intake Guide (Anisha) for general scheme inquiries.
         
-        db.save_user(self.user_id, name, language_preference, cleaned_facts)
-        return f"Successfully saved details for user {name} (ID: {self.user_id})."
+        Args:
+            user_inquiry_summary: Optional summary of what the user needs help with next.
+        """
+        self.active_specialist = None
+        user_info = db.get_user(self.user_id) or {}
+        language_pref = user_info.get("language_preference", "English")
+        
+        # Track transition state in DB: Connecting back to main guide
+        db.update_call_progress(self.call_id, outcome_type="Connecting to Main Jan Sahay Guide (Anisha)...")
+        
+        # Reset instructions back to main SYSTEM_PROMPT
+        await self.update_instructions(SYSTEM_PROMPT)
+        
+        if language_pref.lower() == "hindi":
+            connecting_line = "मैं आपको वापस हमारे जन सहाय मुख्य गाइड, अनीशा जी से जोड़ रहा हूँ। कृपया एक पल रुकिए।"
+            main_intro = "नमस्ते! मैं जन सहाय से अनीशा हूँ।"
+            lang_rule = "STRICT LANGUAGE RULE: Respond ONLY in 100% Hindi (Devanagari script)."
+        else:
+            connecting_line = "I am connecting you back to our main Jan Sahay Guide, Anisha. Please hold on a moment."
+            main_intro = "Hello! I am Anisha from Jan Sahay."
+            lang_rule = "STRICT LANGUAGE RULE: Respond ONLY in 100% English."
 
+        active_session = getattr(self, "_voice_session", None) or (getattr(self, "_activity", None).session if hasattr(self, "_activity") and self._activity else None)
+        if active_session:
+            try:
+                logger.info(f"Specialist speaking return transition announcement: '{connecting_line}'")
+                await active_session.say(connecting_line, allow_interruptions=False)
+            except Exception as e:
+                logger.warning(f"Could not speak return announcement: {e}")
+
+        # Transition directly back to main guide with minimal delay
+        logger.info("[TRANSITION IN PROGRESS] Connecting back to Anisha... Switching voice immediately.")
+        await asyncio.sleep(0.2)
+
+        # Reset voice back to main intake guide (Anisha)
+        voice_cfg = get_voice_config_for_agent("default", language_pref)
+        if active_session and hasattr(active_session, "tts") and active_session.tts:
+            try:
+                logger.info(f"[VOICE RESET] Resetting TTS voice back to main guide {voice_cfg['voice']}")
+                active_session.tts.update_options(
+                    voice=voice_cfg["voice"],
+                    style=voice_cfg.get("style", "Conversation")
+                )
+            except Exception as e:
+                logger.warning(f"Could not reset TTS voice options: {e}")
+
+        # Update DB outcome to fully connected with main guide
+        db.update_call_progress(self.call_id, status="success", outcome_type="Connected: Main Jan Sahay Guide (Anisha)")
+        logger.info("[CONNECTED] Main Jan Sahay Guide (Anisha) is now active.")
+                
+        return (
+            f"[HANDOFF TO MAIN GUIDE SUCCESSFUL - VOICE HAS SWITCHED BACK TO ANISHA]\n"
+            f"{lang_rule}\n"
+            f"IMPORTANT: The specialist has ALREADY spoken '{connecting_line}'. Do NOT repeat 'I am connecting you...'.\n"
+            f"1. Main Guide Greeting: Say '{main_intro}'\n"
+            f"2. Ask how you can help them with government schemes."
+        )
+
+
+
+    # Built-in Scheme Eligibility Checker for General Schemes
     @function_tool
     async def check_scheme_eligibility(
         self,
@@ -159,36 +650,18 @@ class Assistant(Agent):
     ) -> str:
         """Checks the eligibility of a caller for a specific Indian government financial scheme and returns the required document checklist.
         
-        Only call this tool when the caller explicitly asks about their eligibility, required documents, or interest rates/premiums for one of the supported schemes: PMJDY, PMSBY, PMJJBY, APY, or SSY, AND you have gathered the necessary parameters (such as age, tax payer status, or girl child details). Do NOT call this tool for general conversations or if you don't know which scheme they are interested in.
-        
-        Args:
-            scheme_name: The abbreviation of the scheme name to check. Must be exactly one of: "PMJDY", "PMSBY", "PMJJBY", "APY", "SSY".
-            age: The beneficiary's age in years.
-            is_income_tax_payer: True if the beneficiary pays income tax, False otherwise. (Important for APY eligibility).
-            girl_child_age: The age of the girl child in years. (Mandatory when checking Sukanya Samriddhi Yojana / SSY). Use -1 if not applicable.
-            is_indian_resident: True if the beneficiary is a resident of India, False otherwise.
+        Supported schemes: PMJDY, PMSBY, PMJJBY, APY, SSY.
         """
-        import json
-        from datetime import datetime
-        
         today_str = datetime.now().strftime("%B %d, %Y")
         
         try:
-            # SIMULATE TRANSIENT FAILURE (Step 4 & user request)
-            # The first call to this tool in the session will fail, and subsequent retries will succeed.
-            attempts = getattr(self, "_eligibility_attempts", 0) + 1
-            self._eligibility_attempts = attempts
-            if attempts == 1:
-                raise Exception("API Connection Timeout (Simulated Transient Error)")
-            
-            logger.info(f"Tool check_scheme_eligibility called (Attempt {attempts}) for scheme: {scheme_name}, user_id: {self.user_id}")
             name_upper = scheme_name.upper().strip()
             supported_schemes = ["PMJDY", "PMSBY", "PMJJBY", "APY", "SSY"]
             
             if name_upper not in supported_schemes:
                 return json.dumps({
                     "eligible": False,
-                    "reason": f"Scheme '{scheme_name}' is not supported. Supported schemes are: {', '.join(supported_schemes)}.",
+                    "reason": f"Scheme '{scheme_name}' is not in the general list. Supported schemes are: {', '.join(supported_schemes)}.",
                     "document_checklist": [],
                     "scheme_benefits": {},
                     "data_last_updated": today_str,
@@ -205,16 +678,14 @@ class Assistant(Agent):
                 })
                 
             if name_upper == "PMJDY":
-                # Pradhan Mantri Jan Dhan Yojana
                 is_eligible = age >= 10
-                reason = "Eligible. Open to any resident Indian citizen aged 10 or above. (Designed for individuals who do not have any other bank account)." if is_eligible else "Ineligible. Min age to open PMJDY account is 10 years."
-                docs = ["Aadhaar Card (primary KYC)", "PAN Card (if available)", "Or other officially valid document (Voter ID, driving license, NREGA card)"]
+                reason = "Eligible. Open to any resident Indian citizen aged 10 or above." if is_eligible else "Ineligible. Min age to open PMJDY account is 10 years."
+                docs = ["Aadhaar Card (primary KYC)", "PAN Card (if available)", "Or other officially valid document"]
                 benefits = {
-                    "benefits_and_interest": "Basic savings account with zero minimum balance requirement, earn interest on savings deposit (approx 2.70% to 3.00% p.a. depending on bank), free Rupay debit card with built-in Rs 2 Lakh accidental insurance cover, and overdraft facility up to Rs 10,000 for eligible accounts."
+                    "benefits_and_interest": "Zero balance savings account, interest on savings deposit, free Rupay debit card with Rs 2 Lakh accidental insurance, and overdraft facility up to Rs 10,000."
                 }
                 
             elif name_upper == "PMSBY":
-                # Pradhan Mantri Suraksha Bima Yojana
                 is_eligible = 18 <= age <= 70
                 reason = "Eligible. Open to individuals aged between 18 and 70 years." if is_eligible else f"Ineligible. Age must be between 18 and 70 years. Provided age: {age}."
                 docs = ["Aadhaar Card (primary KYC)", "Savings bank account details", "Consent form for auto-debit of premium"]
@@ -225,18 +696,16 @@ class Assistant(Agent):
                 }
                 
             elif name_upper == "PMJJBY":
-                # Pradhan Mantri Jeevan Jyoti Bima Yojana
                 is_eligible = 18 <= age <= 50
                 reason = "Eligible. Open to individuals aged between 18 and 50 years." if is_eligible else f"Ineligible. Age must be between 18 and 50 years. Provided age: {age}."
-                docs = ["Aadhaar Card (primary KYC)", "Savings bank account details", "Consent form for auto-debit of premium", "Self-declaration of good health (if enrolling late)"]
+                docs = ["Aadhaar Card (primary KYC)", "Savings bank account details", "Consent form for auto-debit of premium"]
                 benefits = {
                     "premium": "Rs 436 per annum (auto-debited from savings account)",
                     "insurance_cover": "Rs 2 Lakh life insurance cover for death due to any cause.",
-                    "validity": "1 year (June 1 to May 31), auto-renewed annually. Risk cover continues up to age 55 if enrolled by 50."
+                    "validity": "1 year (June 1 to May 31), auto-renewed annually."
                 }
                 
             elif name_upper == "APY":
-                # Atal Pension Yojana
                 if is_income_tax_payer:
                     is_eligible = False
                     reason = "Ineligible. Income tax payers are not eligible to join Atal Pension Yojana (rule effective since October 1, 2022)."
@@ -246,12 +715,10 @@ class Assistant(Agent):
                 docs = ["Aadhaar Card (primary KYC)", "Mobile number", "Savings bank account details", "Auto-debit authorization form"]
                 benefits = {
                     "premium": "Varies based on entry age and selected pension slab.",
-                    "pension_benefit": "Guaranteed minimum pension of Rs 1,000, Rs 2,000, Rs 3,000, Rs 4,000, or Rs 5,000 per month after age 60, depending on contributions.",
-                    "co_contribution": "Government co-contribution is not available for new subscribers, but the pension amount is fully guaranteed by the Government of India."
+                    "pension_benefit": "Guaranteed minimum pension of Rs 1,000 to Rs 5,000 per month after age 60."
                 }
                 
             elif name_upper == "SSY":
-                # Sukanya Samriddhi Yojana
                 if girl_child_age == -1:
                     return json.dumps({
                         "eligible": "uncertain",
@@ -262,11 +729,11 @@ class Assistant(Agent):
                     })
                 is_eligible = 0 <= girl_child_age <= 10
                 reason = "Eligible. Open for girl child aged 10 years or below." if is_eligible else f"Ineligible. The account can only be opened for a girl child aged 10 years or below. Provided girl child age: {girl_child_age}."
-                docs = ["Birth certificate of the girl child (mandatory)", "Aadhaar Card and PAN Card of the parent/guardian", "Photograph of the girl child and parent", "Proof of address"]
+                docs = ["Birth certificate of the girl child (mandatory)", "Aadhaar Card and PAN Card of the parent/guardian", "Proof of address"]
                 benefits = {
-                    "interest_rate": f"8.2% per annum (compounded annually, tax-free interest, interest rate updated for fiscal year 2025-2026 as of {today_str})",
-                    "tax_benefits": "Triple tax exemption under Section 80C of the Income Tax Act.",
-                    "maturity": "Matures after 21 years from account opening or upon marriage of the girl child after she reaches 18 years."
+                    "interest_rate": f"8.2% per annum (compounded annually, tax-free interest as of {today_str})",
+                    "tax_benefits": "Triple tax exemption under Section 80C.",
+                    "maturity": "Matures after 21 years from account opening or upon marriage after age 18."
                 }
                 
             db.update_call_progress(self.call_id, status="success", outcome_type="Eligibility Check")
@@ -290,13 +757,125 @@ class Assistant(Agent):
                 "error": str(e)
             })
 
+    # Specialist Domain Tools callable after handoff or directly
+    @function_tool
+    async def get_bank_fraud_hotlines(self, bank_name: str = "All") -> str:
+        """Returns official emergency toll-free numbers and helpline links to report unauthorized transactions and freeze bank accounts/cards."""
+        hotlines = {
+            "National Cyber Crime Helpline": "1930 (Immediate 24x7 Golden Hour Reporting)",
+            "State Bank of India (SBI)": "1800 1234 / 1800 2100 / SMS 'BLOCK' to 567676",
+            "HDFC Bank": "1800 1600 / 1800 2600",
+            "ICICI Bank": "1800 1080",
+            "Punjab National Bank (PNB)": "1800 1800 / 1800 2021",
+            "Axis Bank": "1860 419 5555 / 1860 500 5555",
+            "Bank of Baroda": "1800 5700",
+            "Official Cyber Crime Reporting Portal": "https://cybercrime.gov.in"
+        }
+        name_upper = bank_name.upper().strip()
+        matched = {k: v for k, v in hotlines.items() if name_upper in k.upper()}
+        return json.dumps(matched if matched else hotlines)
 
+    @function_tool
+    async def calculate_apy_contribution(self, current_age: int, desired_monthly_pension: int = 5000) -> str:
+        """Calculates exact monthly, quarterly, and half-yearly contributions for Atal Pension Yojana (APY)."""
+        if current_age < 18 or current_age > 40:
+            return json.dumps({
+                "eligible": False,
+                "error": f"Age {current_age} is outside APY entry age limits (18 to 40 years)."
+            })
+        
+        if desired_monthly_pension not in [1000, 2000, 3000, 4000, 5000]:
+            return json.dumps({
+                "eligible": False,
+                "error": "Desired pension slab must be 1000, 2000, 3000, 4000, or 5000 Rupees."
+            })
+
+        multiplier = desired_monthly_pension // 1000
+        base_monthly = {
+            18: 42, 19: 46, 20: 50, 21: 54, 22: 59, 23: 64, 24: 70, 25: 76,
+            26: 82, 27: 90, 28: 97, 29: 106, 30: 116, 31: 126, 32: 138, 33: 151,
+            34: 165, 35: 181, 36: 198, 37: 218, 38: 240, 39: 264, 40: 291
+        }
+        monthly = base_monthly.get(current_age, 116) * multiplier
+        return json.dumps({
+            "eligible": True,
+            "entry_age": current_age,
+            "years_to_contribute": 60 - current_age,
+            "guaranteed_monthly_pension_at_60": f"Rs {desired_monthly_pension:,}",
+            "monthly_contribution": f"Rs {monthly:,}",
+            "quarterly_contribution": f"Rs {monthly * 3:,}",
+            "half_yearly_contribution": f"Rs {monthly * 6:,}"
+        })
+
+    @function_tool
+    async def check_mudra_eligibility(self, loan_amount: int, business_type: str, is_new_business: bool = False) -> str:
+        """Evaluates Mudra loan category (Shishu, Kishore, Tarun, Tarun Plus) and document checklist for business credit."""
+        if loan_amount <= 50000:
+            category = "Shishu (up to Rs 50,000)"
+            docs = ["Aadhaar Card", "Proof of business/shop address", "Machinery/item purchase quotation"]
+        elif loan_amount <= 500000:
+            category = "Kishore (Rs 50,001 to Rs 5 Lakhs)"
+            docs = ["Aadhaar & PAN", "Udyam Registration", "6 months bank statement", "Business proof"]
+        elif loan_amount <= 1000000:
+            category = "Tarun (Rs 5 Lakhs to Rs 10 Lakhs)"
+            docs = ["Aadhaar & PAN", "Udyam Registration", "12 months bank statement", "2 years ITR / Sales records"]
+        elif loan_amount <= 2000000:
+            category = "Tarun Plus (Rs 10 Lakhs to Rs 20 Lakhs)"
+            docs = ["Prior Mudra repayment clearance certificate", "Audited balance sheet", "Udyam Certificate"]
+        else:
+            return json.dumps({"eligible": False, "reason": "Mudra loans are capped at Rs 20 Lakhs."})
+
+        return json.dumps({
+            "category": category,
+            "loan_amount_requested": f"Rs {loan_amount:,}",
+            "collateral_required": "NO collateral security required.",
+            "document_checklist": docs,
+            "application_portal": "www.udyamimitra.in or any commercial bank"
+        })
+
+    @function_tool
+    async def check_crop_insurance_details(self, crop_name: str, season: str, state: str = "All India") -> str:
+        """Returns PMFBY premium rates, 72-hour localized damage claims rules, and helpline 14447."""
+        season_lower = season.lower()
+        if "kharif" in season_lower:
+            premium_rate = "2.0% of Sum Insured (Kharif food/oilseed crops)"
+        elif "rabi" in season_lower:
+            premium_rate = "1.5% of Sum Insured (Rabi crops like Wheat/Mustard)"
+        else:
+            premium_rate = "5.0% of Sum Insured (Commercial / Horticultural crops)"
+
+        return json.dumps({
+            "scheme": "Pradhan Mantri Fasal Bima Yojana (PMFBY)",
+            "crop": crop_name,
+            "season": season,
+            "premium_rate": premium_rate,
+            "CRITICAL_72_HOUR_CLAIM_RULE": "Localized crop damage must be intimated within 72 hours via Crop Insurance App or helpline 14447.",
+            "helpline": "14447 (National Toll-Free Helpline)"
+        })
+
+    @function_tool
+    async def get_pm_kisan_details(self) -> str:
+        """Returns PM-KISAN entitlement (Rs 6,000/yr in 3 installments), eKYC rules, and land seeding requirements."""
+        return json.dumps({
+            "scheme": "PM-KISAN (Pradhan Mantri Kisan Samman Nidhi)",
+            "benefit": "Rs 6,000 per year in 3 equal installments of Rs 2,000.",
+            "requirements": ["1. Aadhaar eKYC on pmkisan.gov.in", "2. Land seeding in State records", "3. DBT-linked bank account"],
+            "helpline": "155261"
+        })
+
+
+# ==============================================================================
+# LIVEKIT SERVER SETUP & RTC SESSION
+# ==============================================================================
 
 server = AgentServer()
 
 
 def prewarm(proc: JobProcess):
-    proc.userdata["vad"] = silero.VAD.load()
+    proc.userdata["vad"] = silero.VAD.load(
+        min_speech_duration=0.15,
+        min_silence_duration=0.25
+    )
 
 
 server.setup_fnc = prewarm
@@ -312,14 +891,16 @@ async def my_agent(ctx: JobContext):
     # Initialize SQLite database
     db.init_db()
 
-    # Retrieve the participant's identity and detect if it is a SIP call
-    user_id = "unknown_user"
-    is_sip = ctx.room.name.startswith("outbound_call_room")
-    for p_identity, p_info in ctx.room.remote_participants.items():
-        user_id = p_identity
-        if p_info.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
-            is_sip = True
-        break
+    # Join the room first
+    await ctx.connect()
+
+    # Wait for the participant to connect
+    participant = await ctx.wait_for_participant()
+    user_id = participant.identity if participant else "unknown_user"
+    is_sip = (
+        (participant and participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP)
+        or ctx.room.name.startswith("outbound_call_room")
+    )
 
     logger.info(f"Active connection with user_id: {user_id}, is_sip: {is_sip}")
     db.init_call_outcome(ctx.job.id, user_id, is_sip)
@@ -360,28 +941,31 @@ async def my_agent(ctx: JobContext):
             "- Do not say anything else in your opening turn. Wait for the user's response after this opening."
         )
     else:
-        instructions = f"{SYSTEM_PROMPT}\n\nCURRENT USER CALL INFO:\n- Current Caller User ID: {user_id}\n- IMPORTANT: You MUST immediately call `lookup_caller` at the very start of the conversation. If a record is returned, welcome the user back by name and reference their previous interaction (e.g. 'नमस्ते Ramesh जी, पिछली बार हमने आपके Atal Pension Yojana के बारे में बात की थी। क्या उससे जुड़ा कोई सवाल है?'). If no record is found, greet them as a new user."
+        instructions = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"CURRENT USER CALL INFO:\n"
+            f"- Current Caller User ID: {user_id}\n"
+            f"- IMPORTANT: You MUST immediately call `lookup_caller` at the very start of the conversation. "
+            f"If a record is returned, welcome the user back by name and reference their previous interaction. "
+            f"If no record is found, greet them as a new user."
+        )
 
-    gemini_model = os.getenv("GEMINI_MODEL") or os.getenv("GOOGLE_MODEL") or "gemini-2.0-flash"
-
-    # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
+    # Set up low-latency voice AI pipeline using Murf Falcon, Gemini 2.5 Flash, Deepgram Nova-3, and preemptive generation
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
         stt=deepgram.STT(model="nova-3", language="multi"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         llm=google.LLM(
-                model=gemini_model,
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
+            model="gemini-2.5-flash",
+            temperature=0.7,
+        ),
         tts=murf.TTS(
-                voice="Anisha", # make sure locale key is not hardcoded
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
+            voice="Anisha",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=1),
+            text_pacing=True
+        ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        preemptive_generation=False,
+        preemptive_generation=True,
     )
 
     # Set up latency listeners on session
@@ -403,8 +987,14 @@ async def my_agent(ctx: JobContext):
             user_stopped_time = 0.0
 
     # Start the session, which initializes the voice pipeline and warms up the models
+    assistant_agent = Assistant(
+        user_id=user_id,
+        call_id=ctx.job.id,
+        instructions=instructions,
+        session=session
+    )
     await session.start(
-        agent=Assistant(user_id=user_id, call_id=ctx.job.id, instructions=instructions),
+        agent=assistant_agent,
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
@@ -418,11 +1008,7 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
-    # Join the room and connect to the user
-    await ctx.connect()
-
     if is_sip:
-        # Trigger the compliant 2-sentence opening greeting automatically for the outbound call
         await session.say(
             f"Hello, this is Shreya calling from Jan Sahay. "
             f"We found you eligible for the {selected_scheme} scheme, and the deadline is on August 15th, so hurry up! "

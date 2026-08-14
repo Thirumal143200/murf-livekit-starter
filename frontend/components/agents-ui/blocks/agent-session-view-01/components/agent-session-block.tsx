@@ -6,7 +6,8 @@ import {
   useAgent,
   useSessionContext,
   useSessionMessages,
-  useLocalParticipant
+  useLocalParticipant,
+  useChat
 } from '@livekit/components-react';
 import { AgentChatTranscript } from '@/components/agents-ui/agent-chat-transcript';
 import {
@@ -16,7 +17,22 @@ import {
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { cn } from '@/lib/shadcn/utils';
 import { TileLayout } from './tile-view';
-import { Shield, Landmark, Wallet, HelpCircle, Loader2, Globe, Lock, Activity, Cpu } from 'lucide-react';
+import {
+  Shield,
+  Landmark,
+  Wallet,
+  HelpCircle,
+  Loader2,
+  Globe,
+  Lock,
+  Activity,
+  Cpu,
+  ShieldAlert,
+  TrendingUp,
+  Briefcase,
+  Sprout,
+  ArrowRight
+} from 'lucide-react';
 
 const MotionMessage = motion.create(Shimmer);
 
@@ -27,19 +43,19 @@ const CHAT_TRANSLATIONS: Record<string, any> = {
     headerSubtitle: "Citizen AI Voice Assistant",
     transcriptHeader: "Live Transcript",
     trySayingHeader: "Try saying",
+    specialistHeader: "Connect to Specialist Guide",
     listeningText: "Listening to your voice...",
     speakingText: "Jan Sahay is speaking...",
     thinkingText: "Processing response...",
     mutedText: "Microphone is turned off",
     idleText: "Connected • Ready to help",
     guideMuted: "Click the microphone button at the bottom of the screen to unmute your microphone.",
-    guideActive: "Ask about PM-Kisan, report cyber crimes, verify UPI links, or ask for basic savings guidance.",
+    guideActive: "Ask about PM-Kisan, report cyber crimes, verify UPI links, or connect with a specialist below.",
     prompts: [
-      "How do I report UPI fraud?",
-      "Which government schemes am I qualified for?",
-      "Explain PM Kisan.",
-      "How can I avoid online scams?",
-      "What should I do if someone asks for my OTP?"
+      "I was scammed on UPI, help me freeze my account!",
+      "How much pension will I get under Atal Pension Yojana?",
+      "Can I get a 5 Lakh Mudra business loan without collateral?",
+      "My paddy crop was damaged by heavy rain, how to claim insurance?"
     ],
     statusConnecting: "Connecting..."
   },
@@ -48,19 +64,19 @@ const CHAT_TRANSLATIONS: Record<string, any> = {
     headerSubtitle: "नागरिक एआई वॉयस असिस्टेंट",
     transcriptHeader: "लाइव ट्रांसक्रिप्ट (बातचीत)",
     trySayingHeader: "बोलकर देखें",
+    specialistHeader: "सीधे विशेषज्ञ से कनेक्ट करें",
     listeningText: "आपकी आवाज़ सुन रहे हैं...",
     speakingText: "जन सहाय बोल रही है...",
     thinkingText: "प्रतिक्रिया संसाधित की जा रही है...",
     mutedText: "माइक्रोफोन बंद है",
     idleText: "कनेक्टेड • मदद के लिए तैयार",
     guideMuted: "अपने माइक्रोफोन को चालू करने के लिए स्क्रीन के नीचे दिए गए माइक्रोफोन बटन पर क्लिक करें।",
-    guideActive: "पीएम-किसान के बारे में पूछें, साइबर अपराध की रिपोर्ट करें, यूपीआई लिंक सत्यापित करें, या बुनियादी बचत सलाह लें।",
+    guideActive: "सरकारी योजनाओं के बारे में पूछें, साइबर फ्रॉड रिपोर्ट करें, या नीचे दिए गए विशेषज्ञ से जुड़ें।",
     prompts: [
-      "मैं यूपीआई धोखाधड़ी की रिपोर्ट कैसे करूं?",
-      "मैं किन सरकारी योजनाओं के लिए पात्र हूं?",
-      "पीएम किसान के बारे में बताएं।",
-      "मैं ऑनलाइन घोटालों से कैसे बच सकता हूं?",
-      "अगर कोई मेरा ओटीपी मांगे तो मुझे क्या करना चाहिए?"
+      "मेरे साथ यूपीआई फ्रॉड हो गया है, तुरंत मदद करें!",
+      "अटल पेंशन योजना में मुझे कितनी पेंशन मिलेगी?",
+      "क्या मुझे 5 लाख का मुद्रा लोन बिना गारंटी मिल सकता है?",
+      "बारिश से मेरी धान की फसल खराब हो गई है, क्लेम कैसे मिलेगा?"
     ],
     statusConnecting: "कनेक्ट किया जा रहा है..."
   }
@@ -85,59 +101,75 @@ export function Fade({ top = false, bottom = false, className }: FadeProps) {
   );
 }
 
-function JanSahayAvatar({ state }: { state: string }) {
+function JanSahayAvatar({
+  state,
+  activeSpecialist
+}: {
+  state: string;
+  activeSpecialist: 'general' | 'fraud' | 'pension' | 'loan' | 'agri'
+}) {
   let borderColor = 'border-slate-300';
   let glowColor = 'shadow-transparent';
 
   if (state === 'muted') {
     borderColor = 'border-rose-500';
-    glowColor = 'shadow-[0_0_20px_rgba(244,63,94,0.15)] ring-4 ring-rose-500/5';
+    glowColor = 'shadow-[0_0_24px_rgba(244,63,94,0.35)] ring-4 ring-rose-500/10';
   } else if (state === 'listening') {
     borderColor = 'border-blue-500';
-    glowColor = 'shadow-[0_0_20px_rgba(59,130,246,0.15)] ring-4 ring-blue-500/5';
+    glowColor = 'shadow-[0_0_24px_rgba(59,130,246,0.35)] ring-4 ring-blue-500/10';
   } else if (state === 'speaking') {
     borderColor = 'border-emerald-500';
-    glowColor = 'shadow-[0_0_20px_rgba(16,185,129,0.15)] ring-4 ring-emerald-500/5';
+    glowColor = 'shadow-[0_0_24px_rgba(16,185,129,0.35)] ring-4 ring-emerald-500/10';
   } else if (state === 'thinking') {
     borderColor = 'border-amber-500';
-    glowColor = 'shadow-[0_0_20px_rgba(245,158,11,0.15)] ring-4 ring-amber-500/5';
+    glowColor = 'shadow-[0_0_24px_rgba(245,158,11,0.35)] ring-4 ring-amber-500/10';
   }
 
+  // Specialist badge metadata
+  const specialistMeta = {
+    general: { title: "Jan Sahay Chief Assistant", icon: "🏛️", badgeClass: "bg-sky-100 text-[#0F4C81] border-sky-300" },
+    fraud: { title: "Cyber Safety & Fraud Recovery Specialist", icon: "🛡️", badgeClass: "bg-rose-100 text-rose-900 border-rose-300" },
+    pension: { title: "Pension & Retirement Specialist", icon: "📈", badgeClass: "bg-indigo-100 text-indigo-900 border-indigo-300" },
+    loan: { title: "Business Loan & Micro-Credit Specialist", icon: "💼", badgeClass: "bg-emerald-100 text-emerald-900 border-emerald-300" },
+    agri: { title: "Agri-Financial & Crop Specialist", icon: "🌾", badgeClass: "bg-amber-100 text-amber-900 border-amber-300" },
+  }[activeSpecialist];
+
   return (
-    <div className="relative flex flex-col items-center justify-center my-8 md:my-10">
-      {/* Outer soundwave concentric rings */}
-      {(state === 'listening' || state === 'speaking' || state === 'muted') && (
-        <>
-          <div className={cn(
-            "absolute w-64 h-64 rounded-full blur-sm opacity-10 animate-ping",
-            state === 'muted' ? "bg-rose-500" : state === 'listening' ? "bg-blue-500" : "bg-emerald-500"
-          )} style={{ animationDuration: '2.5s' }} />
+    <div className="flex flex-col items-center justify-center my-3">
+      {/* Active Specialist Tag Pill */}
+      <div className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-extrabold shadow-2xs mb-2 transition-all duration-300", specialistMeta.badgeClass)}>
+        <span>{specialistMeta.icon}</span>
+        <span>{specialistMeta.title}</span>
+      </div>
 
-          <div className={cn(
-            "absolute w-72 h-72 rounded-full border border-dashed animate-spin opacity-20",
-            state === 'muted' ? "border-rose-500/20" : state === 'listening' ? "border-blue-500/20" : "border-emerald-550/20"
-          )} style={{ animationDuration: '20s' }} />
-        </>
-      )}
-
-      {/* Circular Avatar Wrapper containing the custom uploaded image */}
-      <div className={cn(
-        "w-48 h-48 rounded-full border-4 bg-white flex items-center justify-center shadow-md transition-all duration-500 overflow-hidden relative z-10",
-        borderColor,
-        glowColor
-      )}>
-        <img
-          src="/jan_sahay_avatar.jpg"
-          alt="Jan Sahay Voice Assistant Avatar"
-          className="w-full h-full object-cover rounded-full"
-        />
-
-        {/* Loader overlay for processing state */}
-        {state === 'thinking' && (
-          <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-full">
-            <Loader2 className="w-16 h-16 text-amber-500 animate-spin" />
-          </div>
+      <div className="relative flex items-center justify-center">
+        {/* Outer Pulse Rings */}
+        {state === 'speaking' && (
+          <div className="absolute w-32 h-32 rounded-full bg-emerald-500/25 animate-ping" />
         )}
+        {state === 'listening' && (
+          <div className="absolute w-32 h-32 rounded-full bg-blue-500/25 animate-pulse" />
+        )}
+        {state === 'thinking' && (
+          <div className="absolute w-32 h-32 rounded-full bg-amber-500/25 animate-spin" />
+        )}
+
+        {/* Main Avatar Photo of Jan Sahay / Specialist */}
+        <div className={cn(
+          "w-28 h-28 rounded-full border-4 overflow-hidden bg-white transition-all duration-300 shadow-lg relative z-10",
+          borderColor,
+          glowColor
+        )}>
+          <img
+            src="/jan_sahay_avatar.jpg"
+            alt={specialistMeta.title}
+            className="w-full h-full object-cover object-top"
+          />
+          {/* Bottom Floating Specialist Icon Badge */}
+          <div className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-white border border-slate-300 shadow-md flex items-center justify-center text-sm">
+            {specialistMeta.icon}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -182,6 +214,7 @@ export function AgentSessionView_01({
 }: React.ComponentProps<'section'> & AgentSessionView_01Props) {
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
+  const { send: sendChatMessage } = useChat();
   const [chatOpen, setChatOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
@@ -199,6 +232,23 @@ export function AgentSessionView_01({
     screenShare: supportsScreenShare,
   };
 
+  // Automatically detect the active specialist from message stream or default to general
+  let activeSpecialist: 'general' | 'fraud' | 'pension' | 'loan' | 'agri' = 'general';
+  for (const m of messages) {
+    if (m.from?.isLocal !== true) {
+      const lower = m.message.toLowerCase();
+      if (lower.includes('cyber safety') || lower.includes('fraud recovery') || lower.includes('cybercrime') || lower.includes('साइबर सुरक्षा')) {
+        activeSpecialist = 'fraud';
+      } else if (lower.includes('pension specialist') || lower.includes('atal pension') || lower.includes('पेंशन विशेषज्ञ')) {
+        activeSpecialist = 'pension';
+      } else if (lower.includes('business loan') || lower.includes('mudra') || lower.includes('svanidhi') || lower.includes('मुद्रा')) {
+        activeSpecialist = 'loan';
+      } else if (lower.includes('crop specialist') || lower.includes('fasal bima') || lower.includes('pm-kisan') || lower.includes('कृषि विशेषज्ञ')) {
+        activeSpecialist = 'agri';
+      }
+    }
+  }
+
   useEffect(() => {
     const lastMessage = messages.at(-1);
     const lastMessageIsLocal = lastMessage?.from?.isLocal === true;
@@ -207,6 +257,37 @@ export function AgentSessionView_01({
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Handler to connect to a specialist directly via button click
+  const handleConnectSpecialist = async (specialistType: 'fraud' | 'pension' | 'loan' | 'agri') => {
+    const prompts: Record<string, { en: string; hi: string }> = {
+      fraud: {
+        en: "I need immediate help with an online cyber fraud / UPI scam. Please connect me to the Cyber Safety & Fraud Recovery Specialist.",
+        hi: "मेरे साथ वित्तीय फ्रॉड हुआ है। कृपया मुझे तुरंत साइबर सुरक्षा एवं फ्रॉड रिकवरी विशेषज्ञ से कनेक्ट करें।"
+      },
+      pension: {
+        en: "I want to calculate my pension contributions. Please connect me to the Pension & Retirement Specialist.",
+        hi: "मुझे अटल पेंशन योजना के बारे में जानना है। कृपया मुझे पेंशन एवं रिटायरमेंट विशेषज्ञ से कनेक्ट करें।"
+      },
+      loan: {
+        en: "I need guidance on a PM Mudra business loan. Please connect me to the Business Loan & Micro-Credit Specialist.",
+        hi: "मुझे व्यापार के लिए मुद्रा लोन चाहिए। कृपया मुझे व्यवसाय ऋण विशेषज्ञ से कनेक्ट करें।"
+      },
+      agri: {
+        en: "I need assistance with PM-KISAN and Crop Insurance damage claims. Please connect me to the Agri-Financial Specialist.",
+        hi: "मेरी फसल का नुकसान हुआ है। कृपया मुझे कृषि-वित्तीय एवं फसल बीमा विशेषज्ञ से कनेक्ट करें।"
+      }
+    };
+
+    const textToSend = isHindi ? prompts[specialistType].hi : prompts[specialistType].en;
+    if (sendChatMessage) {
+      try {
+        await sendChatMessage(textToSend);
+      } catch (err) {
+        console.error("Failed to send specialist connect message:", err);
+      }
+    }
+  };
 
   // Determine status indicators based on state
   let statusText = t.statusConnecting;
@@ -223,33 +304,56 @@ export function AgentSessionView_01({
       statusColorClass = "bg-blue-100 text-blue-800 border-blue-250 animate-pulse";
       displayState = "listening";
     } else if (agentState === 'speaking') {
-      statusText = t.speakingText;
-      statusColorClass = "bg-emerald-100 text-emerald-805 border-emerald-250";
+      if (activeSpecialist === 'fraud') {
+        statusText = isHindi ? "साइबर सुरक्षा विशेषज्ञ बोल रहे हैं..." : "Cyber Safety Specialist is speaking...";
+      } else if (activeSpecialist === 'pension') {
+        statusText = isHindi ? "पेंशन विशेषज्ञ बोल रहे हैं..." : "Pension Specialist is speaking...";
+      } else if (activeSpecialist === 'loan') {
+        statusText = isHindi ? "व्यवसाय ऋण विशेषज्ञ बोल रहे हैं..." : "Business Loan Specialist is speaking...";
+      } else if (activeSpecialist === 'agri') {
+        statusText = isHindi ? "कृषि विशेषज्ञ बोल रहे हैं..." : "Agri-Financial Specialist is speaking...";
+      } else {
+        statusText = t.speakingText;
+      }
+      statusColorClass = "bg-emerald-100 text-emerald-800 border-emerald-250";
       displayState = "speaking";
     } else if (agentState === 'thinking') {
-      statusText = t.thinkingText;
-      statusColorClass = "bg-amber-100 text-amber-808 border-amber-250";
+      if (activeSpecialist === 'fraud') {
+        statusText = isHindi ? "साइबर सुरक्षा विशेषज्ञ मार्गदर्शन तैयार कर रहे हैं..." : "Cyber Safety Specialist is formulating guidance...";
+      } else if (activeSpecialist === 'pension') {
+        statusText = isHindi ? "पेंशन विशेषज्ञ मार्गदर्शन तैयार कर रहे हैं..." : "Pension Specialist is formulating guidance...";
+      } else if (activeSpecialist === 'loan') {
+        statusText = isHindi ? "व्यवसाय ऋण विशेषज्ञ मार्गदर्शन तैयार कर रहे हैं..." : "Business Loan Specialist is formulating guidance...";
+      } else if (activeSpecialist === 'agri') {
+        statusText = isHindi ? "कृषि विशेषज्ञ मार्गदर्शन तैयार कर रहे हैं..." : "Agri-Financial Specialist is formulating guidance...";
+      } else {
+        statusText = t.thinkingText;
+      }
+      statusColorClass = "bg-amber-100 text-amber-800 border-amber-250";
       displayState = "thinking";
     } else {
       statusText = t.idleText;
       statusColorClass = "bg-slate-100 text-slate-700 border-slate-205";
       displayState = "idle";
     }
+
   }
 
   return (
     <section
       ref={ref}
-      className={cn('bg-[#F1F5F9] text-slate-808 relative z-10 h-full w-full overflow-hidden flex flex-col', className)}
+      className={cn('bg-[#F1F5F9] text-slate-800 relative z-10 h-full w-full overflow-hidden flex flex-col', className)}
       {...props}
     >
       {/* Top Banner Ribbon */}
       <div className="h-1.5 w-full bg-gradient-to-r from-[#FF9933] via-white to-[#2E7D32] shrink-0" />
 
-      {/* Session Header (Navy Blue Govt Style with dynamic language option) */}
+      {/* Session Header */}
       <header className="bg-[#0F4C81] text-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm shrink-0 relative z-10">
         <div className="flex items-center gap-3">
-          <span className="text-xl">🛡️</span>
+          <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-white/40 shadow-xs shrink-0 bg-white">
+            <img src="/jan_sahay_avatar.jpg" alt="Jan Sahay" className="w-full h-full object-cover object-top" />
+          </div>
           <div>
             <h1 className="font-extrabold text-white text-base">{t.headerTitle}</h1>
             <p className="text-[10px] font-medium text-slate-200">{t.headerSubtitle}</p>
@@ -290,18 +394,19 @@ export function AgentSessionView_01({
       <div className="flex-1 flex flex-col lg:flex-row items-stretch justify-center p-6 gap-6 max-w-7xl mx-auto w-full overflow-hidden relative z-10">
 
         {/* Left Card: Voice Box Activator Panel */}
-        <div className="flex-1 flex flex-col items-center justify-between text-center bg-white rounded border border-slate-200 shadow-sm p-6 sm:p-8">
+        <div className="flex-1 flex flex-col items-center justify-between text-center bg-white rounded border border-slate-200 shadow-sm p-6 sm:p-8 overflow-y-auto">
 
           {/* Top warning stats */}
           {!isMicrophoneEnabled && (
-            <div className="bg-rose-50 border border-rose-200 rounded p-3 text-rose-900 text-xs font-bold leading-relaxed w-full">
+            <div className="bg-rose-50 border border-rose-200 rounded p-3 text-rose-900 text-xs font-bold leading-relaxed w-full mb-3">
               ⚠️ {t.guideMuted}
             </div>
           )}
 
-          <JanSahayAvatar state={displayState} />
+          {/* Avatar with Dynamic Specialist Badge & Theme */}
+          <JanSahayAvatar state={displayState} activeSpecialist={activeSpecialist} />
 
-          <div className="space-y-2 max-w-md">
+          <div className="space-y-1.5 max-w-md">
             <h2 className="text-xl font-bold text-slate-900 md:text-2xl">
               {displayState === 'speaking' ? t.speakingText : displayState === 'listening' ? t.listeningText : displayState === 'muted' ? t.mutedText : t.statusConnecting}
             </h2>
@@ -310,14 +415,80 @@ export function AgentSessionView_01({
             </p>
           </div>
 
+          {/* Direct Specialist Connect Buttons (Click to Connect) */}
+          <div className="mt-5 w-full max-w-md border-t border-slate-100 pt-4">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 text-left flex items-center justify-between">
+              <span>{t.specialistHeader}</span>
+              <span className="text-[9px] text-[#0F4C81] font-extrabold">One-Click Handoff</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleConnectSpecialist('fraud')}
+                className={cn(
+                  "flex items-center gap-2 p-2.5 rounded border text-xs font-bold text-left transition-all shadow-2xs hover:shadow-xs active:scale-98 cursor-pointer",
+                  activeSpecialist === 'fraud'
+                    ? "bg-rose-100 border-rose-400 text-rose-950 ring-2 ring-rose-500/20"
+                    : "bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100"
+                )}
+              >
+                <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                <span className="truncate">{isHindi ? 'साइबर फ्रॉड विशेषज्ञ' : 'Cyber Fraud Specialist'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConnectSpecialist('pension')}
+                className={cn(
+                  "flex items-center gap-2 p-2.5 rounded border text-xs font-bold text-left transition-all shadow-2xs hover:shadow-xs active:scale-98 cursor-pointer",
+                  activeSpecialist === 'pension'
+                    ? "bg-indigo-100 border-indigo-400 text-indigo-950 ring-2 ring-indigo-500/20"
+                    : "bg-indigo-50 border-indigo-200 text-indigo-900 hover:bg-indigo-100"
+                )}
+              >
+                <TrendingUp className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span className="truncate">{isHindi ? 'पेंशन विशेषज्ञ (APY)' : 'Pension Specialist'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConnectSpecialist('loan')}
+                className={cn(
+                  "flex items-center gap-2 p-2.5 rounded border text-xs font-bold text-left transition-all shadow-2xs hover:shadow-xs active:scale-98 cursor-pointer",
+                  activeSpecialist === 'loan'
+                    ? "bg-emerald-100 border-emerald-400 text-emerald-950 ring-2 ring-emerald-500/20"
+                    : "bg-emerald-50 border-emerald-200 text-emerald-900 hover:bg-emerald-100"
+                )}
+              >
+                <Briefcase className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="truncate">{isHindi ? 'मुद्रा लोन विशेषज्ञ' : 'Business Loan Specialist'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConnectSpecialist('agri')}
+                className={cn(
+                  "flex items-center gap-2 p-2.5 rounded border text-xs font-bold text-left transition-all shadow-2xs hover:shadow-xs active:scale-98 cursor-pointer",
+                  activeSpecialist === 'agri'
+                    ? "bg-amber-100 border-amber-400 text-amber-950 ring-2 ring-amber-500/20"
+                    : "bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100"
+                )}
+              >
+                <Sprout className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="truncate">{isHindi ? 'फसल बीमा विशेषज्ञ' : 'Crop Specialist'}</span>
+              </button>
+            </div>
+          </div>
+
           {/* Example prompt pills list */}
-          <div className="mt-6 border-t border-slate-100 pt-5 w-full max-w-md">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 text-left">{t.trySayingHeader}</p>
-            <div className="flex flex-col gap-2 max-h-36 overflow-y-auto pr-1">
+          <div className="mt-4 border-t border-slate-100 pt-3.5 w-full max-w-md">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-left">{t.trySayingHeader}</p>
+            <div className="flex flex-col gap-1.5 max-h-28 overflow-y-auto pr-1">
               {t.prompts.map((p: string, idx: number) => (
-                <div key={idx} className="bg-slate-50 border border-slate-200 hover:border-slate-350 hover:bg-slate-100 rounded px-3.5 py-2.5 text-xs text-left text-slate-700 font-bold transition-colors cursor-pointer flex items-center gap-2">
-                  <HelpCircle className="w-4 h-4 text-[#0F4C81] shrink-0" />
-                  <span>"{p}"</span>
+                <div
+                  key={idx}
+                  onClick={() => sendChatMessage && sendChatMessage(p)}
+                  className="bg-slate-50 border border-slate-200 hover:border-slate-350 hover:bg-slate-100 rounded px-3 py-1.5 text-xs text-left text-slate-700 font-bold transition-colors cursor-pointer flex items-center gap-2"
+                >
+                  <HelpCircle className="w-3.5 h-3.5 text-[#0F4C81] shrink-0" />
+                  <span className="truncate">"{p}"</span>
                 </div>
               ))}
             </div>
@@ -341,7 +512,7 @@ export function AgentSessionView_01({
             <AgentChatTranscript
               agentState={agentState}
               messages={messages}
-              className="mx-auto w-full [&_.is-user>div]:bg-slate-100 [&_.is-user>div]:border-slate-250 [&_.is-user>div]:text-slate-900 [&_.is-user>div]:rounded-lg [&_.is-user>div]:shadow-xs [&_.is-assistant>div]:bg-sky-50 [&_.is-assistant>div]:border-sky-150 [&_.is-assistant>div]:text-slate-900 [&_.is-assistant>div]:rounded-lg [&_.is-assistant>div]:shadow-xs [&>div>div]:px-0 [&>div>div]:pt-2"
+              className="mx-auto w-full [&>div>div]:px-0 [&>div>div]:pt-2"
             />
           </div>
         </div>
