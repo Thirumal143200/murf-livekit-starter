@@ -966,7 +966,7 @@ async def my_agent(ctx: JobContext):
             f"If no record is found, greet them as a new user."
         )
 
-    gemini_model = os.getenv("GEMINI_MODEL") or os.getenv("GOOGLE_MODEL") or "gemini-3.6-flash"
+    gemini_model = os.getenv("GEMINI_MODEL") or os.getenv("GOOGLE_MODEL") or "gemini-2.5-flash"
 
     # Set up low-latency voice AI pipeline using Murf Falcon, Gemini, Deepgram Nova-3, and preemptive generation
     session = AgentSession(
