@@ -115,7 +115,7 @@ Detailed architecture diagram is available in [`docs/architecture.png`](docs/arc
 
 1. **Audio Capture & Transport**: The user speaks into the web browser or phone. LiveKit WebRTC streams low-latency audio chunks directly to the backend session runner.
 2. **Speech Recognition (STT)**: Deepgram's `nova-3` speech-to-text engine transcribes multilingual input (Hindi, Hinglish, English) into clean text tokens.
-3. **Agent Reasoning (LLM)**: The core LLM (Gemini 2.5 Flash) processes the transcription against the system prompt, caller memory, conversation history, and active safety rules.
+3. **Agent Reasoning (LLM)**: The core LLM (Gemini 3.6 Flash) processes the transcription against the system prompt, caller memory, conversation history, and active safety rules.
 4. **Tool Execution**: If required, the agent calls registered Python tools (`lookup_caller`, `search_schemes`, `calculate_sip`, `calculate_emi`, `transfer_to_scheme_specialist`, `escalate_to_human`).
 5. **Speech Synthesis (TTS)**: The text output is streamed to **Murf Falcon TTS**, generating natural, human-like voice audio with Indian accent inflections (`en-IN-pooja` / `Anisha`).
 6. **Playback & Visualizer Sync**: Audio is streamed back through LiveKit, triggering real-time canvas visualizer animations and transcript updates on the frontend.
@@ -129,7 +129,7 @@ Detailed architecture diagram is available in [`docs/architecture.png`](docs/arc
 - **Agent Framework**: `livekit-agents` v0.10.x
 - **TTS Engine**: Murf Falcon (`livekit-plugins-murf` / Murf AI API)
 - **STT Engine**: Deepgram Nova-3 (`livekit-plugins-deepgram`)
-- **LLM Provider**: Google Gemini 2.5 Flash (`livekit-plugins-google`)
+- **LLM Provider**: Google Gemini 3.6 Flash (`gemini-3.6-flash` via `livekit-plugins-google`)
 - **Database**: SQLite3 (`caller_data.db` via `db.py`)
 - **Telephony**: LiveKit SIP Outbound (`livekit-api`)
 
@@ -289,7 +289,7 @@ DEEPGRAM_API_KEY=your_deepgram_api_key_here
 
 # Google Gemini (LLM) Key
 GOOGLE_API_KEY=your_google_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.6-flash
 ```
 
 > **IMPORTANT**: Never commit `.env` or `.env.local` files containing real API secrets to source control.
