@@ -54,29 +54,6 @@ Rather than building an open-ended chatbot, Jan Sahay is structured around four 
 
 ---
 
-## 🖥️ Working Model & Interface
-
-### 1. Main Voice Companion Interface
-![Jan Sahay Voice Interface](docs/screenshots/jan_sahay_ui_overview.png)
-
-*Interactive canvas featuring a glowing audio wave visualizer, multilingual live transcript drawer (Hindi/Hinglish/English), real-time connection status indicators for **Murf Falcon TTS** and **LiveKit WebRTC**, and Indian financial service quick controls.*
-
----
-
-### 2. Multi-Agent Specialist Handoff
-![Specialist Handoff UI](docs/screenshots/jan_sahay_specialist_handoff.png)
-
-*Dynamic multi-agent transition to the **Government Scheme Specialist Agent**, displaying active handoff banners, transferred context notes (e.g., PM-KISAN eligibility, eKYC status), and automatic voice switching.*
-
----
-
-### 3. Call Analytics & Memory Dashboard
-![Analytics & Memory Dashboard](docs/screenshots/jan_sahay_analytics_dashboard.png)
-
-*Operational dashboard displaying call volume metrics, sentiment distribution (Positive/Neutral/Negative), persistent SQLite caller memory records (`caller_data.db`), human escalation logs, and sub-500ms response latency metrics.*
-
----
-
 ## 1. Project Overview
 
 **Jan Sahay (जन सहायक)** is an Indian multilingual AI voice companion engineered to bridge the digital and financial literacy gap for millions of citizens across Bharat. Operating through natural, conversational Hindi, Hinglish, and regional voice interactions, Jan Sahay helps everyday users navigate government welfare schemes, understand core banking services, calculate financial investments, recognize financial fraud, and access human expert assistance when required.
@@ -197,8 +174,6 @@ flowchart LR
 │   └────────────────┘   └─────────────────┘   └────────────────┘   └──────────────┘   │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
-
-High-resolution architecture diagram is saved at [`docs/architecture.png`](docs/architecture.png).
 
 ---
 
@@ -427,14 +402,12 @@ Run the included PowerShell launch script:
 
 ---
 
-## 22. Screenshots/Demo
+## 22. Screenshots / Interface Views
 
-Visual components and interface screenshots are documented in [`docs/screenshots/README.md`](docs/screenshots/README.md):
-
-- **Main Voice View**: Interactive canvas with audio wave visualizer.
-- **Transcript Drawer**: Live text rendering with active speaker indication.
-- **Handoff Banner**: Visual notification badge when transitioning to specialist roles.
-- **System Architecture**: High-resolution diagram available in [`docs/architecture.png`](docs/architecture.png).
+- **Main Voice View**: Interactive canvas with reactive audio wave visualizer, multilingual transcript drawer, and session status indicators.
+- **Transcript Drawer**: Real-time text rendering with active speaker indication and language switching support.
+- **Handoff Banner**: Visual notification badge when transitioning to specialist roles or human escalation.
+- **Call Analytics Dashboard**: Operational oversight capturing duration, sentiment, user intent, and caller history records.
 
 ---
 
@@ -442,7 +415,7 @@ Visual components and interface screenshots are documented in [`docs/screenshots
 
 | Challenge | Root Cause | Implemented Solution |
 |---|---|---|
-| High Spoken Latency | Large LLM response generation times and long TTS chunks | Enforced short response limits (< 25 words per turn) and enabled streaming audio from Murf Falcon TTS. |
+| High Spoken Latency | Large LLM response generation times and long TTS chunks | Enforced short response limits (< 25 words per turn), set `thinking_budget: 0`, and enabled streaming audio from Murf Falcon TTS. |
 | Mixed Hinglish Recognition | Standard STT models struggle with Indian code-switching | Configured Deepgram `nova-3` with `language="multi"` for accurate Hinglish phoneme capture. |
 | Memory Across Sessions | Voice agents often forget caller details upon disconnect | Built SQLite persistent storage (`db.py`) executing `lookup_caller()` automatically on participant join. |
 | Schema Hallucinations | General LLMs mixing up government scheme criteria | Created authoritative local dataset (`schemes_db.json`) and forced retrieval via `search_schemes()`. |
@@ -468,14 +441,7 @@ murf-livekit-starter/
 ├── README.md                     # Main project documentation
 ├── start_app.ps1                 # Windows automated startup script
 ├── start_app.sh                  # Linux/macOS startup script
-├── docs/
-│   ├── architecture.png          # System architecture diagram
-│   └── screenshots/
-│       ├── README.md             # Screenshots & interface documentation
-│       ├── jan_sahay_story_banner.png
-│       ├── jan_sahay_ui_overview.png
-│       ├── jan_sahay_specialist_handoff.png
-│       └── jan_sahay_analytics_dashboard.png
+├── docs/                         # Architectural documentation
 ├── backend/
 │   ├── .env.example              # Backend environment template
 │   ├── .gitignore                # Backend git ignore
