@@ -884,10 +884,14 @@ server = AgentServer()
 
 
 def prewarm(proc: JobProcess):
-    proc.userdata["vad"] = silero.VAD.load(
-        min_speech_duration=0.15,
-        min_silence_duration=0.25
-    )
+    try:
+        proc.userdata["vad"] = silero.VAD.load(
+            min_speech_duration=0.15,
+            min_silence_duration=0.25
+        )
+    except Exception as e:
+        logger.warning(f"Silero VAD prewarm warning: {e}. Loading default VAD.")
+        proc.userdata["vad"] = silero.VAD.load()
 
 
 server.setup_fnc = prewarm
