@@ -404,10 +404,31 @@ Run the included PowerShell launch script:
 
 ## 22. Screenshots / Interface Views
 
-- **Main Voice View**: Interactive canvas with reactive audio wave visualizer, multilingual transcript drawer, and session status indicators.
-- **Transcript Drawer**: Real-time text rendering with active speaker indication and language switching support.
-- **Handoff Banner**: Visual notification badge when transitioning to specialist roles or human escalation.
-- **Call Analytics Dashboard**: Operational oversight capturing duration, sentiment, user intent, and caller history records.
+### 1. Voice Agent Interface — Active Listening Mode
+![Voice Agent Listening Mode](docs/screenshots/voice_agent_listening.png)
+
+*Interactive spoken dialogue view featuring Jan Sahay Chief Assistant avatar badge, real-time Live Transcript drawer, active listening status, and One-Click Specialist Handoff controls.*
+
+---
+
+### 2. Voice Agent Interface — Connecting & One-Click Handoff Guide
+![Voice Agent Connecting & One-Click Handoff](docs/screenshots/voice_agent_connecting.png)
+
+*Connection initialization view displaying avatar badge, prompt guidance ("I was scammed on UPI...", "How much pension under APY...", "5 Lakh Mudra loan without collateral"), and specialist selection controls.*
+
+---
+
+### 3. Call Performance Dashboard
+![Call Performance Dashboard](docs/screenshots/call_performance_dashboard.png)
+
+*Real-time analytics dashboard tracking Total Calls (16), Successful Calls (3), Failed Calls (13), Success Rate by Channel (Browser/SIP), and Failure Categories Breakdown.*
+
+---
+
+### 4. Recent Call History Database View
+![SQLite Call History Database](docs/screenshots/call_history_database.png)
+
+*SQLite caller memory database table (`caller_data.db`) capturing Date & Time, User ID, Channel, Language, Duration, Outcome Status, and Outcome Results (Specialist Connection / Escalation).*
 
 ---
 
@@ -440,9 +461,14 @@ murf-livekit-starter/
 ├── AGENTS.md                     # Agent development guidelines
 ├── README.md                     # Main project documentation
 ├── start_app.ps1                 # Windows automated startup script
-├── start_app.sh                  # Linux/macOS startup script
-├── docs/                         # Architectural documentation
-├── backend/
+├── docs/
+│   ├── screenshots/              # Application screenshots & visual models
+│   │   ├── README.md
+│   │   ├── jan_sahay_story_banner.png
+│   │   ├── voice_agent_listening.png
+│   │   ├── voice_agent_connecting.png
+│   │   ├── call_performance_dashboard.png
+│   │   └── call_history_database.png
 │   ├── .env.example              # Backend environment template
 │   ├── .gitignore                # Backend git ignore
 │   ├── pyproject.toml            # Python package & dependencies config
