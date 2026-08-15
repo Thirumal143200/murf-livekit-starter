@@ -1,25 +1,26 @@
-# Jan Sahayak (जन सहायक) — Visual Screenshots & User Interface
+# Jan Sahay (जन सहायक) — Visual Interface & System Screenshots
 
-This folder contains UI screenshot references and visual component documentation for the Jan Sahayak multilingual voice companion interface.
-
-## Interface Components
-
-### 1. Main Welcome Screen & Avatar
-- **Avatar Asset**: `frontend/public/jan-sahay-avatar.png`
-- **Features**: Clean dark mode landing view with interactive audio session initialization button and branded Murf AI + LiveKit indicators.
-
-### 2. Live Audio Visualizer
-- **Component**: `@agents-ui/agent-audio-visualizer-bar` / `wave` / `aura`
-- **Features**: Real-time reactive audio frequency bar visualizer during active voice conversations.
-
-### 3. Real-Time Transcript & Handoff Banner
-- **Component**: `@agents-ui/agent-chat-transcript`
-- **Features**: Live streaming text transcripts with dynamic agent handoff banners when transferring conversation context to the **Government Scheme Specialist Agent** or triggering **Human Escalation**.
-
-### 4. Call Control Bar
-- **Component**: `@agents-ui/agent-control-bar`
-- **Features**: Toggle microphone, mute/unmute, disconnect call, and view session status.
+This folder contains high-resolution screenshots and visual documentation representing the operational Jan Sahay multilingual voice AI platform.
 
 ---
 
-*System Architecture Diagram available at [docs/architecture.png](../architecture.png)*
+## 1. Project Concept & Vision Banner
+![Jan Sahay Story Banner](jan_sahay_story_banner.png)
+
+---
+
+## 2. Main Voice Assistant Interface
+![Jan Sahay Voice Interface](jan_sahay_ui_overview.png)
+- **Features**: Live audio wave visualizer (cyan/amber), multi-lingual transcript drawer (Hindi, Hinglish, English), participant session state, real-time connection status badges for **Murf Falcon TTS** and **LiveKit WebRTC**, and Indian financial service quick-action buttons.
+
+---
+
+## 3. Multi-Agent Specialist Handoff
+![Specialist Handoff UI](jan_sahay_specialist_handoff.png)
+- **Features**: Glowing active specialist banner alert (`[SPECIALIST HANDOFF ACTIVE: Government Scheme Specialist Agent]`), context transfer notes for scheme eligibility (e.g. PM-KISAN, APY), live transcript drawer, and dynamic voice switching indicator to Murf Falcon Indian Specialist Voice.
+
+---
+
+## 4. Call Analytics & Memory Dashboard
+![Analytics & Memory Dashboard](jan_sahay_analytics_dashboard.png)
+- **Features**: Total call volume metrics, sentiment analysis charts (Positive/Neutral/Negative), SQLite caller memory records (`caller_data.db`), human escalation audit log, intent distribution, and sub-500ms average response latency indicator.

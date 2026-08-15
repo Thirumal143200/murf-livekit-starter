@@ -2,9 +2,78 @@
 
 A Voice-First Financial Companion for Bharat 🇮🇳
 
-![Jan Sahay System Architecture](docs/architecture.png)
+![Jan Sahay Story Banner](docs/screenshots/jan_sahay_story_banner.png)
 
 > Built for the **Murf AI "10 Days of Voice Agents – VoiceForBharat Edition" Challenge** (Financial Services Track).
+
+---
+
+## 📖 The Story That Started It All
+
+Imagine a small shopkeeper in India named **Ramesh**.
+
+One evening, Ramesh receives an urgent SMS on his mobile phone:
+> *"Your bank account will be blocked tonight. Verify your KYC immediately by clicking the link below."*
+
+Anxious and rushed, he clicks the link. Within minutes, he realizes it was a phishing scam and an unauthorized transaction has taken place from his account.
+
+Gripped with panic, Ramesh is flooded with urgent questions:
+- *What should he do right now?*
+- *Who should he contact to block his account before more money is lost?*
+- *How does he file a cyber fraud report under the 1930 National Helpline?*
+- *Are there government welfare schemes like PM-KISAN or Atal Pension Yojana that can support his family?*
+
+The answers exist across fragmented government portals and bank websites—but finding authoritative guidance during a crisis is overwhelmingly difficult. Most portals are text-heavy, loaded with bureaucratic jargon, or written only in formal English.
+
+That exact challenge inspired **Jan Sahay (जन सहायक)**: a citizen-focused, voice-first AI companion engineered to make **financial literacy, fraud prevention, government welfare schemes, and emergency triage** accessible to every citizen. Instead of navigating complex portals or waiting in long bank queues, citizens can simply speak naturally in Hindi, Hinglish, or English to an empathetic AI voice assistant.
+
+---
+
+## 🏛️ The 4 Core Functional Pillars
+
+Rather than building an open-ended chatbot, Jan Sahay is structured around four foundational pillars designed specifically for citizen welfare and digital financial security:
+
+```
+                  ┌──────────────────────────────┐
+                  │         JAN SAHAY            │
+                  │   Citizen Voice Companion    │
+                  └──────────────┬───────────────┘
+                                 │
+     ┌──────────────────┬────────┴─────────┬──────────────────┐
+     ▼                  ▼                  ▼                  ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│  Financial   │ │    Fraud     │ │  Government  │ │  Human &     │
+│   Literacy   │ │  Prevention  │ │   Schemes    │ │ Escalation   │
+└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
+```
+
+1. **💰 Financial Literacy**: Jargon-free explanations of savings accounts, mutual fund SIP return calculations, loan EMI estimations, and interest rate basics.
+2. **🛡️ Fraud Prevention**: Real-time coaching on OTP/PIN security, recognizing phishing SMS, identifying fake calls, and securing compromised banking apps.
+3. **🏛️ Government Welfare Schemes**: Deterministic eligibility calculations and document checklists for **PM-KISAN**, **PMJDY**, **PMSBY**, **PMJJBY**, **Atal Pension Yojana (APY)**, **Sukanya Samriddhi (SSY)**, and **PM Mudra Yojana**.
+4. **📞 Human Escalation & Emergency Triage**: Automated creation of escalation support tickets, step-by-step guidance for National Cyber Crime Reporting (**1930**), and direct handoff to human specialists.
+
+---
+
+## 🖥️ Working Model & Interface
+
+### 1. Main Voice Companion Interface
+![Jan Sahay Voice Interface](docs/screenshots/jan_sahay_ui_overview.png)
+
+*Interactive canvas featuring a glowing audio wave visualizer, multilingual live transcript drawer (Hindi/Hinglish/English), real-time connection status indicators for **Murf Falcon TTS** and **LiveKit WebRTC**, and Indian financial service quick controls.*
+
+---
+
+### 2. Multi-Agent Specialist Handoff
+![Specialist Handoff UI](docs/screenshots/jan_sahay_specialist_handoff.png)
+
+*Dynamic multi-agent transition to the **Government Scheme Specialist Agent**, displaying active handoff banners, transferred context notes (e.g., PM-KISAN eligibility, eKYC status), and automatic voice switching.*
+
+---
+
+### 3. Call Analytics & Memory Dashboard
+![Analytics & Memory Dashboard](docs/screenshots/jan_sahay_analytics_dashboard.png)
+
+*Operational dashboard displaying call volume metrics, sentiment distribution (Positive/Neutral/Negative), persistent SQLite caller memory records (`caller_data.db`), human escalation logs, and sub-500ms response latency metrics.*
 
 ---
 
@@ -12,7 +81,7 @@ A Voice-First Financial Companion for Bharat 🇮🇳
 
 **Jan Sahay (जन सहायक)** is an Indian multilingual AI voice companion engineered to bridge the digital and financial literacy gap for millions of citizens across Bharat. Operating through natural, conversational Hindi, Hinglish, and regional voice interactions, Jan Sahay helps everyday users navigate government welfare schemes, understand core banking services, calculate financial investments, recognize financial fraud, and access human expert assistance when required.
 
-Powered by low-latency real-time voice streaming with **Murf Falcon TTS**, **LiveKit WebRTC**, **Deepgram STT**, and **Google Gemini LLM**, Jan Sahay delivers human-like conversational responses with authentic Indian voice inflections.
+Powered by low-latency real-time voice streaming with **Murf Falcon TTS**, **LiveKit WebRTC**, **Deepgram STT**, and **Google Gemini 3.6 Flash**, Jan Sahay delivers human-like conversational responses with authentic Indian voice inflections.
 
 ---
 
@@ -78,7 +147,29 @@ Financial literacy in India remains unevenly distributed:
 
 ## 7. System Architecture
 
-The high-level system architecture illustrates the end-to-end flow from user speech input to real-time synthesized voice output:
+### 1. Real-Time Audio Streaming Flow
+
+```mermaid
+flowchart LR
+    A["🎙️ Citizen Speaks Audio"] --> B["⚡ LiveKit WebRTC<br/>Real-Time Transport"]
+    B --> C["🗣️ Deepgram Nova-3<br/>Streaming Speech-to-Text"]
+    C --> D["🧠 Google Gemini 3.6 Flash<br/>Reasoning & Intent"]
+    D --> E["💰 Financial Tools Engine<br/>+ Caller Memory DB"]
+    E --> F["🔊 Murf Falcon TTS<br/>Ultra-Fast Indian Voices"]
+    F --> G["🗣️ Natural Voice<br/>Playback to Citizen"]
+
+    G -.-> A
+
+    style A fill:#1E293B,stroke:#38BDF8,color:#fff
+    style B fill:#0284C7,stroke:#38BDF8,color:#fff
+    style C fill:#0D9488,stroke:#2DD4BF,color:#fff
+    style D fill:#6366F1,stroke:#A5B4FC,color:#fff
+    style E fill:#D97706,stroke:#FDE68A,color:#fff
+    style F fill:#EA580C,stroke:#FDBA74,color:#fff
+    style G fill:#10B981,stroke:#6EE7B7,color:#fff
+```
+
+### 2. Multi-Tier System Diagram
 
 ```
                                  ┌─────────────────────────┐
@@ -99,7 +190,7 @@ The high-level system architecture illustrates the end-to-end flow from user spe
                       │ Transcribed Text                              │ Synthesized Audio
                       ▼                                               │
 ┌─────────────────────────────────────────────────────────────────────┴────────────────┐
-│                             Main Jan Sahay Agent (Gemini LLM)                        │
+│                        Main Jan Sahay Agent (Gemini 3.6 Flash)                       │
 │                                                                                      │
 │   ┌────────────────┐   ┌─────────────────┐   ┌────────────────┐   ┌──────────────┐   │
 │   │ Memory (SQLite)│   │ Financial Tools │   │ Govt Specialist│   │  Escalation  │   │
@@ -107,7 +198,7 @@ The high-level system architecture illustrates the end-to-end flow from user spe
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Detailed architecture diagram is available in [`docs/architecture.png`](docs/architecture.png).
+High-resolution architecture diagram is saved at [`docs/architecture.png`](docs/architecture.png).
 
 ---
 
@@ -115,7 +206,7 @@ Detailed architecture diagram is available in [`docs/architecture.png`](docs/arc
 
 1. **Audio Capture & Transport**: The user speaks into the web browser or phone. LiveKit WebRTC streams low-latency audio chunks directly to the backend session runner.
 2. **Speech Recognition (STT)**: Deepgram's `nova-3` speech-to-text engine transcribes multilingual input (Hindi, Hinglish, English) into clean text tokens.
-3. **Agent Reasoning (LLM)**: The core LLM (Gemini 3.6 Flash) processes the transcription against the system prompt, caller memory, conversation history, and active safety rules.
+3. **Agent Reasoning (LLM)**: The core LLM (**Gemini 3.6 Flash**) processes the transcription against the system prompt, caller memory, conversation history, and active safety rules.
 4. **Tool Execution**: If required, the agent calls registered Python tools (`lookup_caller`, `search_schemes`, `calculate_sip`, `calculate_emi`, `transfer_to_scheme_specialist`, `escalate_to_human`).
 5. **Speech Synthesis (TTS)**: The text output is streamed to **Murf Falcon TTS**, generating natural, human-like voice audio with Indian accent inflections (`en-IN-pooja` / `Anisha`).
 6. **Playback & Visualizer Sync**: Audio is streamed back through LiveKit, triggering real-time canvas visualizer animations and transcript updates on the frontend.
@@ -380,7 +471,11 @@ murf-livekit-starter/
 ├── docs/
 │   ├── architecture.png          # System architecture diagram
 │   └── screenshots/
-│       └── README.md             # Screenshots & interface documentation
+│       ├── README.md             # Screenshots & interface documentation
+│       ├── jan_sahay_story_banner.png
+│       ├── jan_sahay_ui_overview.png
+│       ├── jan_sahay_specialist_handoff.png
+│       └── jan_sahay_analytics_dashboard.png
 ├── backend/
 │   ├── .env.example              # Backend environment template
 │   ├── .gitignore                # Backend git ignore
@@ -417,4 +512,4 @@ Developed for **10 Days of Voice Agents – VoiceForBharat Edition** by **Murf A
 - **Track**: Financial Services
 - **Project**: Jan Sahay (जन सहायक)
 - **Repository**: [Thirumal143200/murf-livekit-starter](https://github.com/Thirumal143200/murf-livekit-starter.git)
-- **Technologies**: Murf AI (Falcon TTS), LiveKit WebRTC, Deepgram Nova-3 STT, Google Gemini LLM, Next.js 15.
+- **Technologies**: Murf AI (Falcon TTS), LiveKit WebRTC, Deepgram Nova-3 STT, Google Gemini 3.6 Flash, Next.js 15.
