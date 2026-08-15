@@ -20,6 +20,7 @@ try {
 }
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: path.join(__dirname),
   eslint: {
     // These warnings come from upstream LiveKit/AI UI components, not our code.
     ignoreDuringBuilds: true,
