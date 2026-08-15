@@ -974,6 +974,7 @@ async def my_agent(ctx: JobContext):
         llm=google.LLM(
             model=gemini_model,
             temperature=0.7,
+            thinking_config={"thinking_budget": 0},
         ),
         tts=murf.TTS(
             voice="Anisha",
